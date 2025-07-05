@@ -1,0 +1,772 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" type="image/png" sizes="32x32"  href="images/head-with-cog32x32.png">
+	<link rel="icon" type="image/png" sizes="16x16"  href="images/head-with-cog16x16.png">
+    <title>Webcogs Chat</title>
+	<style>
+		body, html {
+			font-size: 18px;
+			margin: 0px;
+			padding: 0px;
+		}
+		pre {
+			font-size: 16px;
+		}
+		button {
+			border: 2px solid black;
+			border-radius: 8px;
+			font-size: 18px;
+			font-weight: bold;
+			margin: 2px;
+		}
+		.toollabel button {
+			margin: 0px;
+			margin-left: 4px;
+			margin-right: 4px;
+			font-size: 16px;
+		}
+		.apptitle {
+			text-align: top;
+			font-size: 24px;
+			font-weight: bold;
+  			font-family: 'Trebuchet MS', sans-serif;
+		}
+		.applogo {
+			margin-left: 10px;
+			vertical-align: middle;
+		}
+		.prompt {
+			width: 90%;
+			font-style: italic;
+			padding-left: 50px;
+			margin-top: 15px;
+			margin-bottom: 10px;
+			border-top: solid 2px #888;
+			white-space: pre-wrap;
+		}
+		.answer {
+			width: 90%;
+			text-align: left;
+			padding-right: 50px;
+		}
+		.sidebar {
+			float: left;
+			width: 24%;
+		}
+		.maincontainer {
+			float: left;
+			width: 75%;
+		}
+		.sidebar div {
+			margin: 8px;
+		}
+		.sidebar .title {
+			font-size: 25px;
+			font-weight: bold;
+		}
+		.sidebar .subtitle {
+			margin-top: 10px;
+			font-size: 22px;
+		}
+		.toolmenu {
+			margin-right: 5px;
+		}
+		.tooldivider {
+			clear: both;
+			height: 0px;
+			margin-top: 4px;
+		}
+		.toollabel {
+			padding-top: 4px;
+		}
+		.call_tool {
+			font-style: italic;
+			border-left: 1px solid #008;
+			padding-left: 10px;
+			color: #008;
+		}
+		.dropdown-menu {
+			background: #fff;
+			border: 2px solid #888;
+			box-shadow: 0 12px 12px rgba(0,0,0,0.5);
+			z-index: 1000;
+		}
+		/* spinner */
+		.spinner {
+			border: 5px solid #ddf;
+			border-top: 5px solid #446;
+			border-radius: 50%;
+			width: 15px;
+			height: 15px;
+			animation: spin 2s linear infinite;
+			margin-bottom: 15px;
+		}
+		@keyframes spin {
+			0% { transform: rotate(0deg); }
+			100% { transform: rotate(360deg); }
+		}
+		.ai_app_container {
+			border: 2px solid #888;
+			border-radius: 8px;
+			resize: both;
+			width: 95%;
+			height: 100px;
+			overflow: hidden;
+		}
+		iframe.ai_app {
+			width: 100%;
+			height: 100%;
+			overflow: hidden;
+		}
+	</style>
+	<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/highlight.min.js"></script>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js/styles/atom-one-light.css">
+	<script src="../../lib/openai-bundle.js"></script>
+
+	<script>
+	// from: https://stackoverflow.com/questions/2592092/executing-script-elements-inserted-with-innerhtml
+	function setInnerHTML(elm, html) {
+		elm.innerHTML = html;
+		Array.from(elm.querySelectorAll("script"))
+			.forEach( oldScriptEl => {
+			const newScriptEl = document.createElement("script");
+			Array.from(oldScriptEl.attributes).forEach( attr => {
+				newScriptEl.setAttribute(attr.name, attr.value) 
+			});
+			const scriptText = document.createTextNode(oldScriptEl.innerHTML);
+			newScriptEl.appendChild(scriptText);
+			oldScriptEl.parentNode.replaceChild(newScriptEl, oldScriptEl);
+		});
+	}
+	/* Credentials */
+	var credentials = {} // {service => key}
+	//localStorage.removeItem("webcogs_chat_openapi_key")
+	var openai_apikey = localStorage.getItem("webcogs_chat_openai_apikey")
+	if (openai_apikey === null) {
+		openai_apikey = prompt("Please enter your OpenAI apikey (NOTE: it is stored in browser local storage, only do this if no-one else has access to your browser):");
+		if (openai_apikey) {
+			localStorage.setItem("webcogs_chat_openai_apikey", openai_apikey);
+		}
+	}
+
+	function getCredentials(desc) {
+		if (typeof credentials[desc] != "undefined") {
+			if (!confirm(`Use previously entered credentials for ${desc}?`)) {
+				return null
+			} else {
+				return credentials[desc]
+			}
+		}
+		var key = prompt(`Please enter your credentials for ${desc} (NOTE: it is stored in browser local storage, only do this if no-one else has access to your browser):`)
+		if (!key) return null
+		credentials[desc] = key
+		saveToLocalStorage()
+		return key
+	}
+
+
+	/* Local storage */
+	function saveToLocalStorage() {
+		var toolsInfo = generated_tools.map(function(tool) {
+			return {
+				tool: tool,
+				function_src: generated_functions_src[tool.function.name],
+			};
+		});
+		console.log(toolsInfo)
+		localStorage.setItem('webcogs_chat_generated_tools', JSON.stringify(toolsInfo));
+		localStorage.setItem('webcogs_chat_credentials', JSON.stringify(credentials));
+	}
+	function loadFromLocalStorage() {
+		var toolsInfo = JSON.parse(localStorage.getItem('webcogs_chat_generated_tools'))
+		if (toolsInfo) {
+			toolsInfo.forEach(function(toolObj) {
+				generated_tools.push(toolObj.tool);
+				addGeneratedFunction(toolObj.tool.function.name, toolObj.function_src)
+			});
+			populateToolBar();
+		}
+		credentials = JSON.parse(localStorage.getItem('webcogs_chat_credentials'))
+	}
+	
+	function addGeneratedFunction(name,src) {
+		generated_functions_src[name] = src;
+		const f = new AsyncFunction("args", src);
+		generated_functions[name] = f;
+	}
+
+	/* Tool handling */
+	const tools = [
+	{
+		"type": "function",
+		"function": {
+			"name": "create_app",
+			"description": "Create a HTML / Javascript app that is shown to the user. It should be specified as a full, standalone HTML page, including any CSS styling where necessary.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "a name that describes the app, written in camel caps",
+					},
+					"code": {
+						"type": "string",
+						"description": "the full HTML code of the web app, including CSS and Javascript as needed"
+					},
+				},
+				"required": [
+					"name", "code"
+				],
+				"additionalProperties": false
+			},
+			"strict": true
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "create_tool",
+			"description": "Create a tool which can be used later. The tool has access to the internet. It must be written in plain Javascript as a single function expression with one parameter 'args'. Tools can be used to perform actions and retrieve information, but can show information to the user via the function showToUser(html_code). This creates an iframe that shows the given HTML page to the user.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "The name of the tool."
+					},
+					"description": {
+						"type": "string",
+						"description": "Describes what the function does and what it returns."
+					},
+					"arguments": {
+						"type": "string",
+						"description": "A JSON string representing set of name-value pairs. Name is the name of the argument. Value is an object with two fields: {type,description}."
+					},
+					"code": {
+						"type": "string",
+						"description": "The Javascript function expression with one parameter 'args', which contains the function arguments as name-value pairs."
+					},
+				},
+				"required": [
+					"name", "description", "arguments", "code",
+				],
+				"additionalProperties": false
+			},
+			"strict": true
+		}
+	},
+	{
+		"type": "function",
+		"function": {
+			"name": "run_code",
+			"description": "Run Javascript code and return the result.  The code should not be wrapped in a function. Code is executed with eval, and will return the value of a bare expression. It is not possible to use import or HTML. The code has no access to functions or variables from previous calls to the run_code tool.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"code": {
+						"type": "string",
+						"description": "A Javascript code block"
+					},
+				},
+				"required": [
+					"code"
+				],
+				"additionalProperties": false
+			},
+			"strict": true
+		}
+	},
+	];
+	var generated_tools = []
+	var generated_functions_src = {} // { <name>: String }
+	var generated_functions = {} // { <name>: AsyncFunction }
+	
+	var disabled_tools = {} // toolname => true
+
+	const AsyncFunction = async function () {}.constructor;
+
+	function addToolToLibrary(toolspec,code) {
+		// can throw exception if the code does not compile. Then, no tool is defined.
+		addGeneratedFunction(toolspec.function.name, code)
+		generated_tools.push(toolspec)
+		populateToolBar()
+		saveToLocalStorage()
+	}
+	function deleteTool(name) {
+		generated_tools = generated_tools.filter(function(tool) {
+			if (tool.function.name !== name) return true;
+			delete generated_functions_src[tool.function.name];
+			delete generated_functions[tool.function.name];
+			return false;
+		});
+		populateToolBar();
+		saveToLocalStorage();
+	}
+    /**
+     * Searches for a tool in the generated tools array by function name.
+     *
+     * @param {string} functionName - The name of the function to search for.
+     * @returns {object|null} - Returns the tool object if found, otherwise null.
+     */
+    function findTool(functionName) {
+        return generated_tools.find(tool => tool.function.name === functionName) || null;
+    }
+
+	/**
+	 * Function to create an app using provided HTML and JavaScript code.
+	 *
+	 * This function takes an object with a "code" property, which contains HTML
+	 * and JavaScript code as a string. The function processes this string and
+	 * appends it to the element with the id 'response'. It replaces "\\n" with
+	 * actual newline characters to ensure the code format is preserved.
+	 *
+	 * Note: This function utilizes the setInnerHTML helper function to safely
+	 * execute any embedded scripts within the provided HTML code.
+	 *
+	 * @param {Object} args - An object containing the HTML/JavaScript code.
+	 * @param {string} args.code - The HTML and JavaScript code to execute and
+	 * append to the document.
+	 *
+	 * @returns {string} - Returns "Success" upon successful execution.
+	 */
+	function aifn_create_app(args) {
+		name = args["name"]
+		code = args["code"]
+		code = code.replace("\\n","\n")
+		console.log(code)
+		const responseElement = document.getElementById('response')
+		const iframe = document.createElement("iframe")
+		iframe.className = "ai_app"
+		iframe.srcdoc = code
+		const iframecontainer = document.createElement('div')
+		iframecontainer.className = 'ai_app_container'
+		iframecontainer.appendChild(iframe)
+		responseElement.appendChild(iframecontainer)
+        const downloadButton = document.createElement("button");
+        downloadButton.textContent = "⭳ Download Code";
+        downloadButton.onclick = (function(code,filename) {
+			return function() {
+				downloadText(code,filename)
+			}
+        })(code,"WebCogsApp_"+name+".html");
+        responseElement.appendChild(downloadButton);
+		resizeIframe(iframecontainer,iframe)
+		//const appDiv = document.createElement('div');
+		//appDiv.className = "ai_app"
+		//setInnerHTML(appDiv,code);
+		//responseElement.appendChild(appDiv);
+		return "Success"
+	}
+	// alias for aifn_create_app
+	function showToUser(code) {
+		return aifn_create_app({"code": code})
+	}
+	async function aifn_create_tool(args) {
+		console.log("create_tool called with parameters:")
+		console.log(args)
+		var name = args.name
+		var code = args.code.replace("\\n","\n")
+		var description = args.description
+
+        var arguments = typeof args.arguments === "string" ? JSON.parse(args.arguments.replace("\\n","\n")) : args.arguments
+        var argumentKeys = Object.keys(arguments);
+
+		var funcstr = `var inner_f = ${code}; var ret = await inner_f(args); return ret;`
+		var tool = {
+			"type": "function",
+			"function": {
+				"name": name,
+				"description": description,
+				"parameters": {
+					"type": "object",
+					"properties": arguments,
+					"required": argumentKeys,
+					"additionalProperties": false
+				},
+				"strict": true,
+			},
+		}
+		console.log(tool)
+		addToolToLibrary(tool,funcstr)
+		return "Success"
+		//var ret = await f({query: "Vibe coding"})
+		//console.log("Tool returns:")
+		//console.log(ret)
+		/* Sample:
+		code: "async function googleSearch(query) {\n    const response = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(query)}&key=${getCredentials('Google API Key')}`);\n    const results = await response.json();\n    return results.items.map(item => ({ title: item.title, link: item.link }));\n}"
+​
+		docs: "Search Google for a specific query and return the titles and links of the first page results. @param {string} query - The search query to use for fetching results."
+​
+		name: "googleSearch"*/
+	}
+	function aifn_run_code(args) {
+		try {
+			var result = eval(args.code)
+			console.log("run_code returns:")
+			console.log(result)
+			return result
+		} catch (error) {
+			return `Error: ${error.message}`
+		}
+	}
+	
+	/* Helpers */
+
+	function resizeIframe(iframecontainer,iframe) {
+		//document.querySelectorAll('iframe.ai_app').forEach(iframe => {
+		iframe.onload = function() {
+			var body = iframe.contentWindow.document.body;
+			var html = iframe.contentWindow.document.documentElement;
+			var height = Math.max( body.scrollHeight, body.offsetHeight, 
+                       html.clientHeight, html.scrollHeight, html.offsetHeight ) + 20;
+			iframecontainer.style.height = height + 'px';
+			//iframe.style.width = iframe.contentWindow.document.body.scrollWidth + 'px';
+		}
+		//});
+	}
+
+	//setInterval(resizeIframes, 1000);
+
+	function downloadText(text,filename) {
+		const blob = new Blob([text], { type: 'text/plain' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
+    /**
+     * Creates an input element for file selection and uploads the file.
+     *
+     * This function allows users to select a file from their device. Once a file is selected,
+     * it reads the file content and logs it to the console. This can be extended to perform
+     * different actions like uploading to a server or processing the file.
+     */
+    function uploadFile(callback) {
+        // Create an input element
+        const inputElement = document.createElement('input');
+        inputElement.type = 'file';
+        inputElement.style.display = 'none';
+        // Add an event listener for file selection
+        inputElement.addEventListener('change', function(event) {
+            const file = event.target.files[0];
+
+            if (file) {
+                const reader = new FileReader();
+
+                // Load the file as text
+                reader.onload = function(e) {
+                    callback(e.target.result);
+                    // Here you can add code to upload the file or process it as needed
+                };
+
+                reader.readAsText(file);
+            }
+        });
+
+        // Trigger click event to open file dialog
+        inputElement.click();
+    }
+
+    /**
+     * Creates a dropdown menu and attaches it to an element.
+     *
+     * @param {HTMLElement} attachElement - The DOM element to attach the dropdown menu to via an onclick event.
+     * @param {Array} menuItems - An array of objects representing the menu items. Each object should have the following properties:
+     *                         text: The text to display for the menu item.
+     *                         callback: A function to call when the menu item is selected.
+     */
+    function createDropdownMenu(attachElement, menuItems) {
+        attachElement.onclick = function(event) {
+            event.stopPropagation();
+            // Remove any existing dropdown menus
+            document.querySelectorAll('.dropdown-menu').forEach(menu => menu.remove());
+
+            // Create the dropdown menu
+            const dropdownMenu = document.createElement('div');
+            dropdownMenu.className = 'dropdown-menu';
+            dropdownMenu.style.position = 'absolute';
+            dropdownMenu.style.left = attachElement.offsetLeft + 'px';
+            dropdownMenu.style.top = (attachElement.offsetTop + attachElement.offsetHeight) + 'px';
+            dropdownMenu.style.background = '#fff';
+            dropdownMenu.style.border = '1px solid #ddd';
+            dropdownMenu.style.boxShadow = '0 4px 8px rgba(0,0,0,0.1)';
+            dropdownMenu.style.zIndex = 1000;
+
+            // Add menu items to dropdown
+            menuItems.forEach(item => {
+                const menuItem = document.createElement('div');
+                menuItem.textContent = item.text;
+                menuItem.onclick = function() {
+                    item.callback();
+                    dropdownMenu.remove(); // Remove the menu after selection
+                };
+                menuItem.style.padding = '8px 16px';
+                menuItem.style.cursor = 'pointer';
+                menuItem.onmouseover = function() {
+                    menuItem.style.background = '#eee';
+                };
+                menuItem.onmouseout = function() {
+                    menuItem.style.background = '#fff';
+                };
+                dropdownMenu.appendChild(menuItem);
+            });
+
+            document.body.appendChild(dropdownMenu);
+
+            // Remove dropdown when clicking outside of it
+            document.addEventListener('click', function onClickOutside() {
+                dropdownMenu.remove();
+                document.removeEventListener('click', onClickOutside);
+            });
+        };
+    }
+
+	function setToolEnabled(name,enabled) {
+		//alert(name+" "+(enabled ? "enabled" : "disabled"))
+		if (enabled) {
+			if (typeof disabled_tools[name] != "undefined") {
+				delete disabled_tools[name]
+			}
+		} else {
+			disabled_tools[name] = true
+		}
+		console.log(disabled_tools)
+	}
+
+	function populateToolDiv(elem,tools,deletable) {
+        elem.innerHTML = ''; // Clear existing content
+        tools.forEach(tool => {
+            const toolDiv = document.createElement('div');
+            toolDiv.className = "toollabel";
+
+			// enabled checkbox
+			const checkbox      = document.createElement('input');
+			checkbox.type       = 'checkbox';
+			checkbox.id         = 'toolEnabled';
+			checkbox.checked = true;
+			checkbox.addEventListener('change', (function(name) {return function() {
+				setToolEnabled(name,event.target.checked);   // true if checked, false if unchecked
+			}})(tool.function.name));
+			toolDiv.appendChild(checkbox);
+
+			if (deletable) {
+				const menuButton = document.createElement('button');
+				menuButton.className="toolmenu"
+				menuButton.innerHTML = "≡";
+				toolDiv.appendChild(menuButton);
+				createDropdownMenu(menuButton, [
+					{text:"🗑 Delete", callback: (function(name) {return function() {
+						if (confirm("Delete tool "+name+"?")) {
+							deleteTool(name)
+						}
+					}})(tool.function.name) },
+					{text:"⎘ Export", callback: (function(name) {return function() {
+						downloadText(JSON.stringify({
+							tool: findTool(name),
+							function_src: generated_functions_src[name],
+						},null,4), "WebCogsTool_"+name+".json")
+					}})(tool.function.name) },
+					{text:"⭳ Download Code", callback: (function(name) {return function() {
+						downloadText(generated_functions_src[name], "WebCogsTool_"+name+"_src.js")
+					}})(tool.function.name) },
+					{text:"⭱ Replace Code", callback: (function(name) {return function() {
+						uploadFile(function(src) {
+							addGeneratedFunction(name, src)
+							saveToLocalStorage()
+
+						})
+					}})(tool.function.name) },
+				])
+			}
+
+			toolName = document.createElement('span')
+            toolName.textContent = tool.function.name;
+			toolDiv.appendChild(toolName)
+
+
+            elem.appendChild(toolDiv);
+            const dividerDiv = document.createElement('div');
+            dividerDiv.className = "tooldivider";
+            elem.appendChild(dividerDiv);
+        });
+	}
+	function populateToolBar() {
+		populateToolDiv(document.getElementById("ai_tools"),tools,false)
+		populateToolDiv(document.getElementById("ai_generated_tools"),generated_tools,true)
+	}
+
+	client = new OpenAI.OpenAI({apiKey: openai_apikey, dangerouslyAllowBrowser: true})
+	async function callGPT(messages,tools,aifnPrefix) {
+		var nrTries = 20
+		var outputString = ""
+		while (nrTries >= 0) {
+			nrTries--
+			var alltools = tools.concat(generated_tools)
+			const enabledtools = alltools.filter(
+				(tool) => !Object.prototype.hasOwnProperty.call(disabled_tools, tool.function.name)
+			);
+			console.log(enabledtools)
+			console.log(messages)
+			const completion = await client.chat.completions.create({
+				model: "o3",
+				tools: enabledtools,
+				messages,
+			});
+			msg = completion.choices[0].message
+			messages.push(msg)
+			if (msg.content) {
+				outputString += msg.content
+			}
+			if (typeof msg.tool_calls != "undefined") {
+				for (let tool_call of msg.tool_calls) {
+					let fn = tool_call.function.name;
+					let args = JSON.parse(tool_call.function.arguments)
+					let unpackedArgs = {};
+
+					for (let [key, value] of Object.entries(args)) {
+						try {
+							unpackedArgs[key] = JSON.parse(value)
+						} catch (e) {
+							if (e instanceof SyntaxError || e instanceof TypeError) {
+								unpackedArgs[key] = value;
+							}
+						}
+					}
+
+					console.log("Calling tool: " + fn, "args:" + JSON.stringify(unpackedArgs))
+					let funcCalled = false
+					var errorMessage = null
+					var result = null
+					try {
+						if (window[aifnPrefix+fn]) {
+							result = await window[aifnPrefix+fn](unpackedArgs)
+							funcCalled = true;
+						} else if (generated_functions[fn]) {
+							result = await generated_functions[fn](unpackedArgs)
+							funcCalled = true;
+						} else {
+							errorMessage = `Failure: Function ${fn} does not exist.`
+						}
+					} catch (error) {
+						errorMessage = "Failure: An error occurred: " + error
+					}
+					if (funcCalled) {
+						// show function call
+						const responseElement = document.getElementById('response')
+						const toolDiv = document.createElement('div')
+						toolDiv.className = "call_tool"
+						var params = JSON.stringify(unpackedArgs)
+						if (params.length > 100) {
+							params = params.substring(0, 100)+" ...[truncated]"
+						}
+						toolDiv.innerText = `Tool ${fn} called with parameters ${params}`
+						responseElement.appendChild(toolDiv)
+
+						if (!result) result = "Success"
+						if (typeof result != "string") result = JSON.stringify(result)
+                        if (result.length > 2000) {
+                            result = result.substring(0, 2000) + "...(truncated)";
+                        }
+						messages.push({
+							"content": result,
+							"role": "tool",
+							"tool_call_id": tool_call.id
+						})
+					} else {
+						messages.push({
+							"content": errorMessage,
+							"role": "tool",
+							"tool_call_id": tool_call.id
+						})
+					}
+				}
+			} else {
+				// no more tool calls ends turn
+				return outputString;
+			}
+		}
+		return outputString;
+	}
+	</script>
+
+</head>
+<body>
+<div class="sidebar">
+	<img class="applogo" src="images/head-with-cog40x40.png"></img> <span class="apptitle">WebCogs Chat</span>
+	<div class="subtitle">Built-in Tools</div>
+	<div id="ai_tools"></div>
+	<div class="subtitle">Custom Tools</div>
+	<div id="ai_generated_tools"></div>
+	<button onclick="importToolFromFile()">Import tool</button>
+</div>
+<div class="maincontainer">
+	<div id="response"></div>
+	<textarea id="inputMessage" rows="3" cols="120"></textarea>
+	<button onclick="submitMessage()">Submit</button>
+</div>
+<br/>
+
+<script>
+
+
+initialMessages = [
+	{
+		role: "developer",
+		content: "Always answer the user in Markdown format. Especially section headers should be done markdown style. in if you are asked to create an app or game, create it using HTML and Javascript, and use the create_app tool. Use a light grey background for the app unless otherwise specified. Do not use space or enter as keyboard controls, and ensure there is a way to restart the app. Do not omit any code, write everything out in full. Call any javascript functions immediately, do not rely on domContentReloaded to trigger function calls. If you are asked to do anything that requires internet access and/or that could be done in Javascript code, create a tool by supplying a name, documentation, and the full Javascript code, and call the tool once it is created. The code of a tool should be a function with a single argument 'args'. args is a set of name-value pairs that represents arguments passed by name. Again, do not omit any code, write everything out in full. If an API call requires an API key or other credentials, do not add the credentials as function parameters, but always call the function getCredentials(service) to get it. The service parameter is a text description of the service. The require function is not available. Calls to google custom search API must include key and cx parameters.  If you are asked to process or compute something or solve a problem that's best solved in code, use the run_code tool."
+	},
+
+]
+
+messages = JSON.parse(JSON.stringify(initialMessages))
+
+async function submitMessage() {
+    const responseElement = document.getElementById('response');
+
+	const message = document.getElementById('inputMessage').value;
+    const messageDiv = document.createElement('div');
+	messageDiv.className = "prompt"
+    messageDiv.textContent = message;
+    responseElement.appendChild(messageDiv);
+
+	const spinnerDiv = document.createElement('div');
+	spinnerDiv.className = "spinner";
+	responseElement.appendChild(spinnerDiv);
+
+	messages.push({
+		role: "user",
+		content: message,
+	})
+
+    const response = await callGPT(messages,tools,"aifn_")
+	const responseDiv = document.createElement('div')
+	responseDiv.className = "answer"
+
+	if (response) {
+		responseDiv.innerHTML = marked.parse(response, {
+			//highlight: function(code, lang) {
+			//    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+			//    return hljs.highlight(code, { language }).value;
+			//}
+		});
+
+		//responseDiv.innerHTML = marked.parse(response.content)
+		responseElement.appendChild(responseDiv)
+		document.querySelectorAll('pre code').forEach((block) => {
+			hljs.highlightElement(block);
+		});
+	}
+    spinnerDiv.remove();
+}
+loadFromLocalStorage()
+populateToolBar()
+</script>
+</body>
+</html>
