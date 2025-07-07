@@ -5,7 +5,7 @@
 	<link rel="icon" type="image/png" sizes="32x32"  href="images/head-with-cog32x32.png">
 	<link rel="icon" type="image/png" sizes="16x16"  href="images/head-with-cog16x16.png">
     <title>Webcogs Chat</title>
-	<style>
+	<style id="basestyles">
 		body, html {
 			font-size: 18px;
 			margin: 0px;
@@ -39,6 +39,8 @@
 		}
 		.prompt {
 			width: 90%;
+			margin-left: auto;
+			margin-right: auto;
 			font-style: italic;
 			padding-left: 50px;
 			margin-top: 15px;
@@ -48,6 +50,8 @@
 		}
 		.answer {
 			width: 90%;
+			margin-left: auto;
+			margin-right: auto;
 			text-align: left;
 			padding-right: 50px;
 		}
@@ -121,9 +125,9 @@
 			overflow: hidden;
 		}
 	</style>
-	<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/highlight.min.js"></script>
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js/styles/atom-one-light.css">
+	<script id="markedscript" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+	<script id="highlightscript" src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.5.1/highlight.min.js"></script>
+	<link id="highlightcss" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js/styles/atom-one-light.css">
 	<script src="../../lib/openai-bundle.js"></script>
 
 	<script>
@@ -167,7 +171,35 @@
 		return key
 	}
 
+	/** Gets the outerHTML of multiple HTML elements by their IDs, grouped into head and body.
+	 * 
+	 * @param {string[]|Set<string>} headIds - IDs of elements in <head>
+	 * @param {string[]|Set<string>} bodyIds - IDs of elements in <body>
+	 * @returns {{ headHtml: string, bodyHtml: string }} - The HTML code snippets.
+	 */
+	function getHTMLElements(headIds, bodyIds) {
+		function extract(ids) {
+			return Array.from(ids)
+			.map(id => {
+				const el = document.getElementById(id);
+				return el ? el.outerHTML : '';
+			})
+			.filter(Boolean)
+			.join('\n');
+		}
 
+		return "<html><head>\n" 
+				+ extract(headIds)
+				+"<style></style>"
+			+"</head><body>\n"
+				+ extract(bodyIds)
+			+"</body></html>\n"
+	}
+	function saveChatAsHTML() {
+		var html = getHTMLElements(["basestyles","markedscript","highlightscript","highlightcss"], ["response"])
+		var datetime = new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").replace("Z", "");
+		downloadText(html,`WebCogsChat-${datetime}.html`)
+	}
 	/* Local storage */
 	function saveToLocalStorage() {
 		var toolsInfo = generated_tools.map(function(tool) {
@@ -442,12 +474,7 @@
 		URL.revokeObjectURL(url);
 	}
 
-    /**
-     * Creates an input element for file selection and uploads the file.
-     *
-     * This function allows users to select a file from their device. Once a file is selected,
-     * it reads the file content and logs it to the console. This can be extended to perform
-     * different actions like uploading to a server or processing the file.
+    /** Creates an input element for file selection and uploads the file. Callback is called with the file content as parameter.
      */
     function uploadFile(callback) {
         // Create an input element
@@ -474,6 +501,17 @@
         // Trigger click event to open file dialog
         inputElement.click();
     }
+
+	function importToolFromFile() {
+		uploadFile(function(json) {
+			var obj = JSON.parse(json)
+			if (findTool(obj.tool.function.name)) {
+				alert(`A tool named '${obj.tool.function.name}' already exists.`)
+			} else {
+				addToolToLibrary(obj.tool,obj.function_src)
+			}
+		})
+	}
 
     /**
      * Creates a dropdown menu and attaches it to an element.
@@ -707,10 +745,11 @@
 	<div id="ai_generated_tools"></div>
 	<button onclick="importToolFromFile()">Import tool</button>
 </div>
-<div class="maincontainer">
+<div id="maincontainer" class="maincontainer">
 	<div id="response"></div>
 	<textarea id="inputMessage" rows="3" cols="120"></textarea>
 	<button onclick="submitMessage()">Submit</button>
+	<button onclick="saveChatAsHTML()">Save chat as HTML</button>
 </div>
 <br/>
 

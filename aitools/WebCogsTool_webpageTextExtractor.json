@@ -1,0 +1,24 @@
+{
+    "tool": {
+        "type": "function",
+        "function": {
+            "name": "webpageTextExtractor",
+            "description": "Extracts visible text content from a webpage using a public CORS proxy. Falls back to a secondary service if the primary proxy fails.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {
+                        "type": "string",
+                        "description": "Full URL of the webpage to extract visible text from."
+                    }
+                },
+                "required": [
+                    "url"
+                ],
+                "additionalProperties": false
+            },
+            "strict": true
+        }
+    },
+    "function_src": "var inner_f = async function(args) {\n  const { url } = args;\n  if (!url) throw new Error('url parameter is required');\n\n  // First attempt: use allorigins proxy and DOM parsing\n  const tryAllOrigins = async () => {\n    const proxy = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url);\n    const res = await fetch(proxy);\n    if (!res.ok) throw new Error('allorigins fetch failed with status ' + res.status);\n    const html = await res.text();\n    const parser = new DOMParser();\n    const doc = parser.parseFromString(html, 'text/html');\n    ['script','style','noscript','svg','img','iframe','picture'].forEach(tag => {\n      doc.querySelectorAll(tag).forEach(el => el.remove());\n    });\n    const text = doc.body ? doc.body.textContent : '';\n    return text.replace(/\\s+/g, ' ').trim();\n  };\n\n  // Second attempt: use jina.ai text extraction (returns plain text)\n  const tryJina = async () => {\n    const proxy = 'https://r.jina.ai/http://'+url.replace(/^https?:\\/\\//,'');\n    const res = await fetch(proxy);\n    if (!res.ok) throw new Error('jina.ai fetch failed with status ' + res.status);\n    const text = await res.text();\n    return text.trim();\n  };\n\n  try {\n    return await tryAllOrigins();\n  } catch(e1) {\n    console.warn('Allorigins failed, trying jina.ai:', e1.message);\n    try {\n      return await tryJina();\n    } catch(e2) {\n      throw new Error('Both methods failed: ' + e1.message + ' | ' + e2.message);\n    }\n  }\n}; var ret = await inner_f(args); return ret;"
+}

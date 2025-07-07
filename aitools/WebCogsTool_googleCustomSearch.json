@@ -1,0 +1,24 @@
+{
+    "tool": {
+        "type": "function",
+        "function": {
+            "name": "googleCustomSearch",
+            "description": "Perform a Google Custom Search and return the results.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to pass to Google Custom Search."
+                    }
+                },
+                "required": [
+                    "query"
+                ],
+                "additionalProperties": false
+            },
+            "strict": true
+        }
+    },
+    "function_src": "var inner_f = async function(args) {\n  const apiKey = getCredentials('Google Custom Search API Key');\n  const cx = getCredentials('Google Custom Search Engine ID');\n  const response = await fetch(`https://www.googleapis.com/customsearch/v1?q=${encodeURIComponent(args.query)}&key=${apiKey}&cx=${cx}`);\n  if (!response.ok) {\n    throw new Error('Network response was not ok ' + response.statusText);\n  }\n  const data = await response.json();\n  return data.items.map(item => ({title: item.title, link: item.link, snippet: item.snippet}));\n}; var ret = await inner_f(args); return ret;"
+}
