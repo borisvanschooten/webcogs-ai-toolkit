@@ -1,0 +1,142 @@
+"use strict";
+const fs = require('fs');
+const path = require('path');
+var OpenAI = require("openai")
+const callLLM = require('../js/call_llm.js')
+const secrets = require("../secrets.js")
+
+/**
+ * Given an array of prompts (each with "file" or "text"),
+ * return an array of resolved prompt strings concatenated in order.
+ *
+ * @param {Array} prompts Array of prompt objects
+ * @param {string} baseDir Optional base directory to resolve files from
+ * @returns {string} The full concatenated prompt text
+ */
+function assemblePromptText(prompts, baseDir = '.') {
+    return prompts.map(prompt => {
+        let result = '';
+        if (prompt.text) {
+           result += prompt.text;
+        }
+        if (prompt.file) {
+            const filePath = path.resolve(baseDir, prompt.file);
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            result += fileContent;
+        }
+        return result;
+    }).join('\n');
+}
+
+/**
+ * For each output in the manifest, assemble the complete prompt text
+ * by combining system_prompts and the output prompts, and resolving their content.
+ *
+ * @param {object} manifest The manifest object
+ * @param {string} baseDir Optional base directory for file resolution
+ * @returns {Array} Array of objects with output type and assembled prompt text
+ */
+function generatePromptsFromManifest(manifest, baseDir = '.') {
+    var user_prompts = manifest.outputs.map(output => {
+        //const fullPrompts = [
+        //  ...(manifest.system_prompts || []),
+        //  ...(output.prompts || [])
+        //];
+        const promptText = assemblePromptText(output.prompts, baseDir);
+        return {
+            type: output.type,
+            text: promptText
+        };
+    });
+    var system_prompt = assemblePromptText(manifest.system_prompts, baseDir);
+    return {
+        system_prompt: system_prompt,
+        user_prompts: user_prompts,
+    }
+}
+
+
+// -----------------------------------------------------------------------------
+// manifest contains the following fields:
+// name: name of the module
+// description: description of the module
+// system_prompts: an array of prompt objects. These are read in the order they appear. 
+//     Each prompt object has a field "file" which is a path to a prompt file and/or a field "text" which contains literal prompt text.
+// outputs: an array of output objects. Each output object has the following format:
+//     type: a string representing the type of output (for example, code or test)
+//     prompts: an array of prompt objects. These are concatenated to the system_prompts.
+//     outfile: file to output the result to
+
+if (process.argv.length < 3) {
+    console.error('Usage: node script.js <manifest.json>');
+    process.exit(1);
+}
+
+const manifestPath = process.argv[2];
+
+let manifest;
+try {
+    const data = fs.readFileSync(manifestPath, 'utf8');
+    manifest = JSON.parse(data);
+} catch (err) {
+    console.error('Failed to read or parse manifest file:', err.message);
+    process.exit(1);
+}
+
+var prompts = generatePromptsFromManifest(manifest)
+
+console.log(prompts)
+
+
+var client = new OpenAI.OpenAI({apiKey: secrets.openai_apikey/*, dangerouslyAllowBrowser: true*/})
+
+const tools = [
+	{
+		"type": "function",
+		"function": {
+			"name": "create_plugin",
+			"description": "Create a Javascript class for a plugin. It should be specified in full, do not omit any code.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"source_code": {
+						"type": "string",
+						"description": "The source code of the class",
+					},
+				},
+				"required": [
+					"source_code"
+				],
+				"additionalProperties": false
+			},
+			"strict": true
+		}
+	},
+];
+
+async function build() {
+    for (var i=0; i<prompts.user_prompts.length; i++) {
+        function create_plugin(args) {
+            const target = manifest.outputs[i].target
+            fs.writeFileSync(target, args.source_code, 'utf8')
+        }
+        var ai_functions = {
+            "create_plugin": create_plugin,
+        }
+        var messages = [
+            {
+                "role": "developer",
+                "content": prompts.system_prompt,
+            },{
+                "role": "user",
+                "content": prompts.user_prompts[i].text,
+            }
+        ]
+        var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,"o3",5,null,2000)
+        console.log(output)
+        console.log(messages)
+    }
+}
+
+build()
+

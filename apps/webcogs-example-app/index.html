@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Example app</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #fafafa;
+        }
+        .menu {
+            width: 100%;
+            padding: 16px 24px;
+            background: #222;
+            color: #fff;
+            box-sizing: border-box;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .layout {
+            display: flex;
+            flex-direction: row;
+            margin-top: 0;
+            min-height: calc(100vh - 64px);
+        }
+        .config-area {
+            width: 240px;
+            min-width: 180px;
+            padding: 20px 16px;
+            background: #f0f0f0;
+            border-right: 1px solid #ddd;
+            min-height: 400px;
+        }
+        .main-content {
+            flex: 1;
+            padding: 24px;
+            min-width: 0;
+            min-height: 400px;
+        }
+        @media (max-width: 700px) {
+            .layout {
+                flex-direction: column;
+            }
+            .config-area {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #ddd;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="nav_bar" class="menu">
+        Menu Area
+    </div>
+    <div id="side_bar" class="layout">
+        <div class="config-area">
+            Side Bar
+        </div>
+        <div id="main" class="main-content">
+            Main Content Area
+        </div>
+    </div>
+<script type="module">
+	import {SQLDb,WebCogsCore} from "../../js/webcogs_core.js"
+	function router(route, ...params) {
+		console.log("Router received route request: "+route)
+		if (route == "useradmin") {
+			core.initPlugin("useradmin")
+		} else if (route == "ticketadmin") {
+			core.initPlugin("ticketadmin")
+		} else {
+			alert("Routing to: "+route+"("+JSON.stringify(params)+")")
+		}
+	}
+	var db = new SQLDb("db/run")
+	var core = new WebCogsCore(router,db)
+	async function init() {
+		await core.loadPlugin("../apps/webcogs-example-app/plugins/useradmin/plugin.js","useradmin")
+		await core.loadPlugin("../apps/webcogs-example-app/plugins/ticketadmin/plugin.js","ticketadmin")
+		await core.loadPlugin("../apps/webcogs-example-app/plugins/mainmenu/plugin.js","mainmenu")
+		core.initPlugin("mainmenu")
+	}
+	init();
+</script>
+</body>
+</html>
