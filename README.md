@@ -42,17 +42,17 @@ Core functions for plugins:
 
 WebCogsCore also comes with a simple SQL interface for handling data.
 
-### Building an app with WebCogs (rough prototype!)
+### Building an app with WebCogs
 
 Create the core HTML page which does the following:
 
 - define a layout template
-- create a database and an instance of WebCogsCore.
+- create a database and an instance of WebCogsCore
 - Load the plugins
 - Init the plugins you want to display first
 - Handle routes coming from the plugins
 
-Create a plugin by defining a prompt manifest.  This defines the LLM model and prompts to use, and the output files.  It enables you to structure your prompts in a modular framework-agnostic way.  This can be used stand-alone, separate from the WebCogsCore framework. The build_ai_module tool takes a json prompt manifest, calls a LLM, and outputs the AI generated code to one or more target files. Format is as follows:
+Create plugins by defining a prompt manifest for each plugin.  This defines the LLM model and prompts to use, and the output files.  It enables you to structure your prompts in a modular framework-agnostic way.  This can be used stand-alone, separate from the WebCogsCore web framework. The build_ai_module tool takes a json prompt manifest, calls a LLM, and outputs the AI generated code to one or more target files. Format is as follows:
 
 ```json
 {
@@ -83,12 +83,22 @@ An example application is found in apps/webcogs-example-app/
 To regenerate the plugins, you first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the secret, use the following commands:
 
 ```
-node clitools/build_ai_module.js  apps/webcogs-example-app/plugins/useradmin/manifest.json
-node clitools/build_ai_module.js  apps/webcogs-example-app/plugins/ticketadmin/manifest.json
-node clitools/build_ai_module.js  apps/webcogs-example-app/plugins/mainmenu/manifest.json
+node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/useradmin/manifest.json
+node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/ticketadmin/manifest.json
+node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/mainmenu/manifest.json
+node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/user_overview/manifest.json
+node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/ticket_overview/manifest.json
 ```
 
-The example app has to be run from a webserver that also provides an SQL endpoint. A simple webserver is provided. Run it with:
+The example app has to be run from a webserver that also provides an SQL endpoint. A simple webserver with example data for the example app is provided. Run it with:
 ```
 node ./clitools/webserver.js
 ``` 
+
+The generated JS files contain the used prompt in a comment at the beginning.  You can use the build tool to check if the prompt has changed w.r.t. the prompt that was used to generate the file. Use the diff command:
+
+```
+node clitools/build_ai_module.js diff apps/webcogs-example-app/plugins/useradmin/manifest.json
+```
+
+This outputs the differences to the console. You can use this to decide when to re-generate the plugin code.

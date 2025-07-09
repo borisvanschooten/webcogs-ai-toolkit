@@ -66,13 +66,7 @@
 	import {SQLDb,WebCogsCore} from "../../js/webcogs_core.js"
 	function router(route, ...params) {
 		console.log("Router received route request: "+route)
-		if (route == "useradmin") {
-			core.initPlugin("useradmin")
-		} else if (route == "ticketadmin") {
-			core.initPlugin("ticketadmin")
-		} else {
-			alert("Routing to: "+route+"("+JSON.stringify(params)+")")
-		}
+		core.initPlugin(route, ...params)
 	}
 	var db = new SQLDb("db/run")
 	var core = new WebCogsCore(router,db)
@@ -80,6 +74,8 @@
 		await core.loadPlugin("../apps/webcogs-example-app/plugins/useradmin/plugin.js","useradmin")
 		await core.loadPlugin("../apps/webcogs-example-app/plugins/ticketadmin/plugin.js","ticketadmin")
 		await core.loadPlugin("../apps/webcogs-example-app/plugins/mainmenu/plugin.js","mainmenu")
+		await core.loadPlugin("../apps/webcogs-example-app/plugins/user_overview/plugin.js","user_overview")
+		await core.loadPlugin("../apps/webcogs-example-app/plugins/ticket_overview/plugin.js","ticket_overview")
 		core.initPlugin("mainmenu")
 	}
 	init();

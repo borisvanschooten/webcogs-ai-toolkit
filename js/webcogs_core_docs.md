@@ -1,7 +1,7 @@
-# Plugin docs
+# Docs for writing a plugin
 
 A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
-constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  custom_params can be any number of custom parameters.
+constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
 
@@ -18,7 +18,7 @@ core.mount has the following parameters:
 function core.route(route, ...custom_params) - Invoke the core router.
 core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
-- custom_params - can be any number of custom parameters.
+- custom_params - there can be any number of custom parameters.
 
 ## Core properties
 

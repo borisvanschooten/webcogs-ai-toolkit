@@ -1,7 +1,12 @@
 "use strict";
-const fs = require('fs');
-const path = require('path');
+
+const fs = require('fs')
+const path = require('path')
+require('colors');
+
 var OpenAI = require("openai")
+const {diffChars} = require('diff')
+
 const callLLM = require('../js/call_llm.js')
 const secrets = require("../secrets.js")
 
@@ -67,12 +72,13 @@ function generatePromptsFromManifest(manifest, baseDir = '.') {
 //     prompts: an array of prompt objects. These are concatenated to the system_prompts.
 //     outfile: file to output the result to
 
-if (process.argv.length < 3) {
-    console.error('Usage: node script.js <manifest.json>');
+if (process.argv.length < 4) {
+    console.error('Usage: node script.js <command> <prompt manifest json file>.  Command is one of: diff, build');
     process.exit(1);
 }
 
-const manifestPath = process.argv[2];
+const command = process.argv[2]
+const manifestPath = process.argv[3];
 
 let manifest;
 try {
@@ -85,10 +91,10 @@ try {
 
 var prompts = generatePromptsFromManifest(manifest)
 
-console.log(prompts)
+//console.log(prompts)
 
 
-var client = new OpenAI.OpenAI({apiKey: secrets.openai_apikey/*, dangerouslyAllowBrowser: true*/})
+var client = new OpenAI.OpenAI({apiKey: secrets.openai_apikey})
 
 const tools = [
 	{
@@ -114,29 +120,83 @@ const tools = [
 	},
 ];
 
-async function build() {
-    for (var i=0; i<prompts.user_prompts.length; i++) {
-        function create_plugin(args) {
-            const target = manifest.outputs[i].target
-            fs.writeFileSync(target, args.source_code, 'utf8')
+function getPromptSpec(i) {
+    return    "/*@webcogs_system_prompt\n" + prompts.system_prompt
+            + "\n@webcogs_user_prompt\n" + prompts.user_prompts[i].text
+            + "\n@webcogs_end_prompt_section*/\n"
+}
+
+async function build(i) {
+    function create_plugin(args) {
+        const target = manifest.outputs[i].target
+        var code = getPromptSpec(i) + args.source_code
+        fs.writeFileSync(target, code, 'utf8')
+    }
+    var ai_functions = {
+        "create_plugin": create_plugin,
+    }
+    var messages = [
+        {
+            "role": "developer",
+            "content": prompts.system_prompt,
+        },{
+            "role": "user",
+            "content": prompts.user_prompts[i].text,
         }
-        var ai_functions = {
-            "create_plugin": create_plugin,
-        }
-        var messages = [
-            {
-                "role": "developer",
-                "content": prompts.system_prompt,
-            },{
-                "role": "user",
-                "content": prompts.user_prompts[i].text,
-            }
-        ]
-        var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,"o3",5,null,2000)
-        console.log(output)
-        console.log(messages)
+    ]
+    var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,"o3",5,null,2000)
+    //console.log(output)
+    //console.log(messages)
+}
+
+function diff(i) {
+    const new_prompt = getPromptSpec(i);
+    const target = manifest.outputs[i].target;
+
+    let oldContent = '';
+    try {
+        oldContent = fs.readFileSync(target, 'utf8');
+    } catch (err) {
+        console.log(`Cannot read target file "${target}.`);
+        return;
+    }
+    const endIndex = oldContent.indexOf("@webcogs_end_prompt_section*/\n");
+    let old_prompt = '';
+    if (endIndex !== -1) {
+        // include '@webcogs_end_prompt_section' in the extracted string
+        const endTag = "@webcogs_end_prompt_section*/\n";
+        const sliceIndex = oldContent.indexOf(endTag) + endTag.length;
+        old_prompt = oldContent.slice(0, sliceIndex);
+    } else {
+        console.log(`Target file "${target} does not have a prompt section.`);
+        return;
+    }
+    if (old_prompt !== new_prompt) {
+        console.log(`Prompt differs in target file "${target}":`);
+        const diff = diffChars(old_prompt, new_prompt);
+        diff.forEach((part) => {
+            // green for additions, red for deletions
+            let text = part.added ? part.value.bgGreen :
+                        part.removed ? part.value.bgRed :
+                                        part.value;
+            process.stdout.write(text);
+        });
+    } else {
+        console.log(`Prompt is unchanged in target file "${target}."`);
     }
 }
 
-build()
+async function runCommand() {
+    for (var i=0; i<prompts.user_prompts.length; i++) {
+        if (command == "build") {
+            await build(i)
+        } else if (command == "diff") {
+            diff(i)
+        } else {
+            console.error(`Unknown command ${command}`);
+            process.exit(1);
+        }
+    }
+}
 
+runCommand()

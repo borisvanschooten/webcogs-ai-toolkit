@@ -13,7 +13,7 @@ export class SQLDb {
 			}
 		})
 		var res_obj = await res.json()
-		console.log(res_obj)
+		//console.log(res_obj)
 		// convert to key-value
 		var ret = []
 		for (var r=0; r<res_obj[0].values.length; r++) {
@@ -23,7 +23,8 @@ export class SQLDb {
 			}
 			ret.push(row)
 		}
-		console.log(ret)
+		//console.log(ret)
+		console.log(`SQLDb returned ${ret.length} results.`)
 		return ret
 	}
 }
@@ -49,13 +50,16 @@ export class WebCogsCore {
 	mount(location, html_code, css_code) {
         const host = document.getElementById(location);
         if (!host) return;
-        const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+		// purge any old shadow root and any event listeners by cloning host node
+		const newHost = host.cloneNode(false);
+  		host.replaceWith(newHost);
+        const shadow = /*host.shadowRoot ||*/ newHost.attachShadow({ mode: 'open' });
         shadow.innerHTML = '';
         if (css_code) {
             const style = document.createElement('style');
             style.textContent = css_code;
             shadow.appendChild(style);
-	}
+		}
         const wrapper = document.createElement('div');
         wrapper.innerHTML = html_code;
         shadow.appendChild(wrapper);
@@ -68,24 +72,30 @@ export class WebCogsCore {
 
 	async loadPlugin(path, name) {
 		try {
+			//console.log(`Loading plugin ${name}...`)
 			const module = await import(path)
+			var loadedSyms = 0
 			for (const key in module) {
 				if (typeof this.loadedPlugins[name] != "undefined") {
-					console.error(`Plugin named ${name} already loaded`)
+					console.error(`Plugin named ${name} already loaded.`)
 					return;
 				}
 				console.log(`Loaded plugin ${name}.`)
 				console.log(module[key])
 				this.loadedPlugins[name] = module[key]
+				loadedSyms += 1
+			}
+			if (loadedSyms != 1) {
+				console.error(`Unexpected number of symbols in plugin ${name}: ${loadedSyms}`)
 			}
         } catch (error) {
             console.error('Failed to load plugin:', error)
         }
 	}
 
-	initPlugin(name) {
+	initPlugin(name,...args) {
 		if (this.loadedPlugins[name]) {
-			var instance = new this.loadedPlugins[name](this)
+			var instance = new this.loadedPlugins[name](this,...args)
 			console.log(instance)
 		} else {
 			console.error(`Cannot find plugin ${name}`)

@@ -1,0 +1,1 @@
+Write a plugin that shows a particular tickets in the database. All ticket fields except user ID should be shown in a table. he ticket text should be shown in a large area.  The user who issued the ticket should be shown in a table below the ticket. The ticket ID is passed as a custom parameter to the constructor.

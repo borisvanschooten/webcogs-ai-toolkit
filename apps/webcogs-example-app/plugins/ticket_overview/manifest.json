@@ -1,0 +1,17 @@
+{
+	"name": "ticket_overview",
+	"description": "Show info for a particular ticket",
+	"vendor": "openai",
+	"model": "o3",
+	"system_prompts": [
+		{ "file": "js/webcogs_core_docs.md" },
+		{ "file": "apps/webcogs-example-app/app_docs.md" }
+	],
+	"outputs": [
+		{
+			"type": "code",
+			"prompts": [ { "file": "apps/webcogs-example-app/plugins/ticket_overview/plugin_docs.md" } ],
+			"target": "apps/webcogs-example-app/plugins/ticket_overview/plugin.js"
+		}
+	]
+}

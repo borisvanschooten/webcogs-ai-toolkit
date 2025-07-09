@@ -1,0 +1,1 @@
+Write a plugin that shows a single user in a table with two columns, keys left and values right.  Below the user table should be the list of tickets submitted by the user. The user ID is passed as a custom parameter to the constructor.
