@@ -41,15 +41,11 @@ function assemblePromptText(prompts, baseDir = '.') {
  * @param {string} baseDir Optional base directory for file resolution
  * @returns {Array} Array of objects with output type and assembled prompt text
  */
-function generatePromptsFromManifest(manifest, baseDir = '.') {
-    var user_prompts = manifest.outputs.map(output => {
-        //const fullPrompts = [
-        //  ...(manifest.system_prompts || []),
-        //  ...(output.prompts || [])
-        //];
-        const promptText = assemblePromptText(output.prompts, baseDir);
+function generatePromptsFromManifest(manifest, baseDir = '.', targetBaseDir = ".") {
+    var user_prompts = manifest.targets.map(target => {
+        const promptText = assemblePromptText(target.prompts, targetBaseDir);
         return {
-            type: output.type,
+            name: target.name,
             text: promptText
         };
     });
@@ -62,23 +58,16 @@ function generatePromptsFromManifest(manifest, baseDir = '.') {
 
 
 // -----------------------------------------------------------------------------
-// manifest contains the following fields:
-// name: name of the module
-// description: description of the module
-// system_prompts: an array of prompt objects. These are read in the order they appear. 
-//     Each prompt object has a field "file" which is a path to a prompt file and/or a field "text" which contains literal prompt text.
-// outputs: an array of output objects. Each output object has the following format:
-//     type: a string representing the type of output (for example, code or test)
-//     prompts: an array of prompt objects. These are concatenated to the system_prompts.
-//     outfile: file to output the result to
+// Main build script
 
-if (process.argv.length < 4) {
-    console.error('Usage: node script.js <command> <prompt manifest json file>.  Command is one of: diff, build');
+if (process.argv.length < 5) {
+    console.error('Usage: node script.js  <command>  <build target>  <prompt manifest json file>.  Command is one of: diff, build');
     process.exit(1);
 }
 
 const command = process.argv[2]
-const manifestPath = process.argv[3];
+const buildTarget = process.argv[3];
+const manifestPath = process.argv[4];
 
 let manifest;
 try {
@@ -89,7 +78,10 @@ try {
     process.exit(1);
 }
 
-var prompts = generatePromptsFromManifest(manifest)
+var baseDir = "."
+const targetBaseDir = manifest.wd ? path.resolve(baseDir, manifest.wd) : baseDir;
+
+var prompts = generatePromptsFromManifest(manifest, baseDir, targetBaseDir)
 
 //console.log(prompts)
 
@@ -128,7 +120,7 @@ function getPromptSpec(i) {
 
 async function build(i) {
     function create_plugin(args) {
-        const target = manifest.outputs[i].target
+        const target = path.resolve(targetBaseDir, manifest.targets[i].file);
         var code = getPromptSpec(i) + args.source_code
         fs.writeFileSync(target, code, 'utf8')
     }
@@ -151,13 +143,13 @@ async function build(i) {
 
 function diff(i) {
     const new_prompt = getPromptSpec(i);
-    const target = manifest.outputs[i].target;
+    const target = path.resolve(targetBaseDir, manifest.targets[i].file);
 
     let oldContent = '';
     try {
         oldContent = fs.readFileSync(target, 'utf8');
     } catch (err) {
-        console.log(`Cannot read target file "${target}.`);
+        console.log(`Cannot read target file "${target}".`);
         return;
     }
     const endIndex = oldContent.indexOf("@webcogs_end_prompt_section*/\n");
@@ -188,6 +180,7 @@ function diff(i) {
 
 async function runCommand() {
     for (var i=0; i<prompts.user_prompts.length; i++) {
+        if (buildTarget != prompts.user_prompts[i].name) continue;
         if (command == "build") {
             await build(i)
         } else if (command == "diff") {

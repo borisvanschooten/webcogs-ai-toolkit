@@ -1,18 +1,16 @@
 # Webcogs AI Toolkit
-Minimalist AI toolkit for the browser and web development. Currently based on the OpenAI API backend, so you will need an OpenAI API account to use it.
+Minimalist AI toolkit for the browser, node.js, and web development. Currently based on the OpenAI API backend, so you will need an OpenAI API account to use it. Provides:
 
-Provides:
-- simple browser library to use the OpenAI API in the browser or node.js, focused on OpenAI's tool/function calling functionality.
 - fully client-side chatbot with tool and app building facilities
-- experimental AI-first prompt-as-code web app building framework, based on node.js and a kernel/plugin architecture
+- experimental AI-oriented prompts-as-code and LLM-as-compiler web app building framework, based on modular prompts and a kernel/plugin architecture
 
 ## The chatbot
 
 Just start apps/chatbot/index.html in the browser. You do not need a web server.  It will ask for an OpenAI API key, which is stored in the browser's localStorage.  Note that your key is only safe if:
 
-- the chatbot is run from a local file (localStorage access scope is limited to that file)
-- the chatbot is run from a domain you fully control (otherwise malicious code from the same domain can access it)
-- no others have access to your browser environment.
+- the chatbot is run from a local file (localStorage access scope is limited to that file in all major browsers)
+- or: the chatbot is run from a domain you fully control (otherwise malicious code from the same domain can access it)
+- no others have access to your browser.
 
 So it's *not* safe if you run it directly from a github proxy like githack.
 
@@ -26,79 +24,101 @@ The toolkit comes with a pre-compiled browser-compatible version of the OpenAI J
 
 To regenerate the browser bundle, first install node.js and npm.  Then install browserify and openai via npm install (see package.json).  Once installed, run "bundle-openai.sh" to regenerate the file.
 
-## Webcogs app building framework
+## Webcogs app building toolkit
 
-The basic idea behind the Webcogs app building framework is a kernel-plugin architecture, where the kernel (aka core) is carefully hand-crafted, but the plugins can be written completely by AI.  The plugins only have to deal with a combination of well-established knowledge (e.g. vanilla HTML, Javascript, MySQL) and a small core API.
+The basic idea behind the Webcogs app building toolkit is a kernel-plugin architecture, in which a hand-crafted kernel (aka core) orchestrates a set of plugins which can be completely AI generated.  This takes the prompts-as-code idea a step further, by *using the LLM like a regular (powerful but slow and unreliable) compiler* that compiles specifications into code, but only for certain manageable and well-defined parts of your code. The toolkit provides two things:
 
-The core is basically a HTML application.  It provides a screen layout template, defining elements on which plugins can mount widgets, and a router which determines how UI flow is handled.  Interaction between core and plugins is handled by the WebCogsCore class, which only has a handful of functions.
+- a framework agnostic prompts-as-code build tool which supports modular prompt structuring.  This allows building a prompt out of select parts of the core specifications, such as API docs and SQL and CSS definitions, along with plugin-specific prompt text.  It also includes a diff tool which shows differences between the current prompt and the prompt with which particular code was generated.  It makes it easier to update AI generated code when specifications are updated, and fix issues with the AI generated code with prompt engineering rather than direct changes in the code. 
+- a framework that provides a specific core/plugin structure for web apps. The core app is a HTML single page application, where the plugins handle specific pages and widgets.
 
-Core functions for apps:
+An example application is found in apps/webcogs-example-app/
+
+### Using build_ai_module + a prompt manifest to structure prompts
+
+Creating AI-generated plugins starts with defining a prompt manifest.  This defines the LLM model and prompts to use, and the build targets.  It enables you to structure your prompts in a modular framework-agnostic way.  The build_ai_module tool takes a json prompt manifest to build a prompt, calls a LLM, and outputs the AI generated code to a target file. Manifest format is as follows:
+
+```json
+{
+	"name": "Ticketing App",
+	"description": "Simple demo app for demonstrating WebCogs plugins",
+	"version": "0.1",
+	"ai_vendor": "openai",
+	"ai_model": "o3",
+	"system_prompts": [
+		{ "file": "js/webcogs_core_docs.md" },
+		{ "file": "apps/webcogs-example-app/app_docs.md" },
+		{ "text": "\n## SQL table definitions\n\n", "file": "apps/webcogs-example-app/datamodel.sql"}
+	],
+	"wd": "apps/webcogs-example-app/plugins/",
+	"targets": [
+		{
+			"name": "mainmenu",
+			"prompts": [ { "file": "mainmenu/plugin_docs.md" } ],
+			"file": "mainmenu/plugin.js"
+		},
+		{
+			"name": "useradmin",
+			"prompts": [ { "file": "useradmin/plugin_docs.md" } ],
+			"file": "useradmin/plugin.js"
+		},
+		...
+	]
+}
+```
+
+ai_vendor and ai_model refer to the LLM to use. Currently only openai is supported.  In system_prompts you can define a series of prompts. They are simply concatenated and fed into the LLM as the system prompt.  In targets you can define multiple build targets, each with its own prompts and output file.  For each build target, you can again define a series of prompts which are concatenated to form the user prompt used to generate the code. 
+
+The build_ai_module command line tool can then be used to build targets.  You first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the key, you can use the following command to re-generate plugins for the example app:
+
+```
+node clitools/build_ai_module.js build <target_name> apps/webcogs-example-app/manifest.json
+```
+
+"build" is the command, \<target_name\> can for example be "mainmenu".
+
+The generated JS files contain the used prompts in a comment at the beginning. This is an easy way to include essential metadata in the generated files, though it makes them rather large, so you'd want to minify or strip the comments in production.  You can use the build_ai_module's diff command to check if the prompt has changed w.r.t. the prompt that was used to generate the file:
+
+```
+node clitools/build_ai_module.js diff mainmenu apps/webcogs-example-app/manifest.json
+```
+
+This outputs the prompt differences to the console. You can use this to decide when to re-generate the plugin code.
+
+### WebCogsCore app framework
+
+An app is divided into a (hand crafted) core and (AI-generated) plugins. Interaction between core and plugins is handled by the WebCogsCore class, which only has a handful of functions.  This way, the plugins only have to deal with a combination of well-established knowledge (e.g. vanilla HTML, Javascript, MySQL) and a small core API.
+
+The core is a HTML application, which basically does the following:
+
+- define a layout template in HTML
+- create a database and an instance of WebCogsCore
+- Load the plugins
+- Init the plugins you want to display first
+- Handle routes coming from the plugins and init new plugins as appropriate
+
+WebCogsCore functions for the app:
 - loadPlugin(pluginPath,name): (Pre)load plugin
 - initPlugin(name): start the plugin
 
-Core functions for plugins:
+WebCogsCore functions for plugins:
 - core.route(route,...params) - invoke router
 - core.mount(elementID, html_code, css_code) - mount a html element on the page as a shadow DOM
 
 WebCogsCore also comes with a simple SQL interface for handling data.
 
-### Building an app with WebCogs
+A plugin always consists of a single class with a constructor that initialises the plugin and any associated widgets.  A WebCogsCore object is passed in, through which the plugin has access to the core API. Constructing a new instance resets the state of the plugin.  Custom arguments can be used to pass specific information to the constructor.
 
-Create the core HTML page which does the following:
-
-- define a layout template
-- create a database and an instance of WebCogsCore
-- Load the plugins
-- Init the plugins you want to display first
-- Handle routes coming from the plugins
-
-Create plugins by defining a prompt manifest for each plugin.  This defines the LLM model and prompts to use, and the output files.  It enables you to structure your prompts in a modular framework-agnostic way.  This can be used stand-alone, separate from the WebCogsCore web framework. The build_ai_module tool takes a json prompt manifest, calls a LLM, and outputs the AI generated code to one or more target files. Format is as follows:
-
-```json
-{
-	"name": "useradmin",
-	"description": "user admin",
-	"vendor": "openai",
-	"model": "o3",
-	"system_prompts": [
-		{ "file": "js/webcogs_core_docs.md" },
-		{ "file": "apps/webcogs-example-app/app_docs.md" }
-	],
-	"outputs": [
-		{
-			"type": "code",
-			"prompts": [ { "file": "apps/webcogs-example-app/plugins/useradmin/plugin_docs.md" } ],
-			"target": "apps/webcogs-example-app/plugins/useradmin/plugin.js"
-		}
-	]
-}
-```
-
-Vendor and model refer to the LLM to use. Currently only openai is supported.  In system_prompts you can define a series of prompts. They are simply concatenated and fed into the LLM as the system prompt.  In outputs you can define multiple target files, each with its own prompts.  Again you can define multiple prompts which are concatenated to form the user prompt used to generate the code. 
-
-The plugin code is generated through a call to the create_plugin tool. A plugin consists of a single class with a constructor that initialises the plugin and any associated widgets.  A WebCogsCore object is passed in, through which the plugin has access to the core API.
-
-An example application is found in apps/webcogs-example-app/
-
-To regenerate the plugins, you first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the secret, use the following commands:
-
-```
-node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/useradmin/manifest.json
-node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/ticketadmin/manifest.json
-node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/mainmenu/manifest.json
-node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/user_overview/manifest.json
-node clitools/build_ai_module.js build apps/webcogs-example-app/plugins/ticket_overview/manifest.json
-```
-
-The example app has to be run from a webserver that also provides an SQL endpoint. A simple webserver with example data for the example app is provided. Run it with:
+Check out apps/webcogs-example-app as an example of how this works. The app has to be run from a webserver that also provides an SQL endpoint. A simple webserver with example data for the app is provided. Run it with:
 ```
 node ./clitools/webserver.js
 ``` 
 
-The generated JS files contain the used prompt in a comment at the beginning.  You can use the build tool to check if the prompt has changed w.r.t. the prompt that was used to generate the file. Use the diff command:
+### Future work
 
-```
-node clitools/build_ai_module.js diff apps/webcogs-example-app/plugins/useradmin/manifest.json
-```
+This framework is very much in the experimental stage, and there is obviously a lot to be done. For example:
 
-This outputs the differences to the console. You can use this to decide when to re-generate the plugin code.
+- Suitable test harness
+- Handling browser navigation (e.g. the back button)
+- Visual styling prompts
+- Multiple output files in one target
+- More extensive core-plugin architecture for handling other things, like algoritms and backends

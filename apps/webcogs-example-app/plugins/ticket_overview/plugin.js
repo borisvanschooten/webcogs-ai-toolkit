@@ -1,5 +1,4 @@
-/*
-@webcogs_system_prompt
+/*@webcogs_system_prompt
 # Docs for writing a plugin
 
 A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
@@ -37,6 +36,7 @@ core.db is a SQLite compatible database object. It has the following functions:
 
 A route is a string that indicates a widget plugin name.
 
+
 ## SQL table definitions
 
 CREATE TABLE User (
@@ -53,161 +53,98 @@ CREATE TABLE Ticket (
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
 	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL
+	response_date DEFAULT NULL,
+    response_text TEXT DEFAULT NULL
 );
 
 @webcogs_user_prompt
 Write a plugin that shows a particular tickets in the database. All ticket fields except user ID should be shown in a table. he ticket text should be shown in a large area.  The user who issued the ticket should be shown in a table below the ticket. The ticket ID is passed as a custom parameter to the constructor.
 
 @webcogs_end_prompt_section*/
-export class ShowTicketPlugin {
-    /**
-     * Plugin that displays details of a single ticket together with the user that issued it.
-     * 
-     * @param {Object} core   The core object supplied by the host application.
-     * @param {Number} ticketId The id of the ticket that should be displayed.
-     */
+export default class TicketViewer {
     constructor(core, ticketId) {
         this.core = core;
-        this.ticketId = ticketId;
+        this.ticketId = parseInt(ticketId, 10);
 
-        // Build the UI immediately. Data will be inserted asynchronously once it is fetched.
-        this.shadow = this.core.mount(
-            'main',
-            `
+        const html_code = `
             <div class="ticket-container">
-                <h2>Ticket Details</h2>
-                <table id="ticketTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Entry Date</th>
-                            <th>Response Date</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
+                <table class="ticket-info">
+                    <tr><th>ID</th><td id="t_id">Loading…</td></tr>
+                    <tr><th>Entry date</th><td id="t_entry">Loading…</td></tr>
+                    <tr><th>Response date</th><td id="t_resp_date">Loading…</td></tr>
+                    <tr><th>Response text</th><td id="t_resp_text">Loading…</td></tr>
                 </table>
-
                 <h3>Ticket Text</h3>
-                <div id="ticketText" class="ticket-text">Loading …</div>
-
-                <h2>User Details</h2>
-                <table id="userTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Username</th>
-                            <th>Email</th>
-                            <th>First Name</th>
-                            <th>Surname</th>
-                            <th>Birth Date</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
+                <div class="ticket-text" id="t_text">Loading…</div>
+                <h3>User Info</h3>
+                <table class="user-info">
+                    <tr><th>ID</th><td id="u_id">Loading…</td></tr>
+                    <tr><th>Username</th><td id="u_username">Loading…</td></tr>
+                    <tr><th>Email</th><td id="u_email">Loading…</td></tr>
+                    <tr><th>First name</th><td id="u_first">Loading…</td></tr>
+                    <tr><th>Surname</th><td id="u_surname">Loading…</td></tr>
+                    <tr><th>Birth date</th><td id="u_birth">Loading…</td></tr>
                 </table>
             </div>
-            `,
-            `
-            .ticket-container {
-                font-family: Arial, sans-serif;
-                padding: 10px;
-            }
+        `;
 
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin-bottom: 20px;
-            }
+        const css_code = `
+            .ticket-container { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; }
+            .ticket-info, .user-info { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+            .ticket-info th, .ticket-info td, .user-info th, .user-info td { border: 1px solid #ddd; padding: 8px; }
+            .ticket-info th, .user-info th { background-color: #f2f2f2; text-align: left; }
+            .ticket-text { padding: 10px; border: 1px solid #ddd; min-height: 150px; white-space: pre-wrap; background-color: #fafafa; }
+        `;
 
-            th, td {
-                border: 1px solid #ccc;
-                padding: 8px;
-                text-align: left;
-            }
+        // Mount the UI and keep a reference to the shadow root
+        this.shadow = core.mount('main', html_code, css_code);
 
-            th {
-                background: #f5f5f5;
-            }
-
-            .ticket-text {
-                border: 1px solid #ccc;
-                min-height: 120px;
-                padding: 8px;
-                white-space: pre-wrap; /* keep line breaks */
-                margin-bottom: 20px;
-            }
-            `
-        );
-
-        // Kick off asynchronous loading of the ticket data.
+        // Kick off data loading
         this.loadData();
     }
 
-    /**
-     * Fetch ticket and user data from the database and render them.
-     */
-    async loadData() {
-        try {
-            // Retrieve ticket information.
-            const ticketRows = await this.core.db.run(
-                `SELECT id, user, text, entry_date, response_date FROM Ticket WHERE id = ${this.ticketId}`
-            );
-
-            if (!ticketRows || ticketRows.length === 0) {
-                this.showError(`Ticket with ID ${this.ticketId} not found.`);
-                return;
-            }
-
-            const ticket = ticketRows[0];
-
-            // Render ticket fields (excluding user and text) into the table.
-            const ticketTbody = this.shadow.querySelector('#ticketTable tbody');
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${ticket.id}</td>
-                <td>${ticket.entry_date || ''}</td>
-                <td>${ticket.response_date || ''}</td>
-            `;
-            ticketTbody.appendChild(tr);
-
-            // Render ticket text separately in a large area.
-            const textDiv = this.shadow.getElementById('ticketText');
-            textDiv.textContent = ticket.text || '';
-
-            // Retrieve user information and render below.
-            const userRows = await this.core.db.run(
-                `SELECT id, username, email, first_name, surname, birth_date FROM User WHERE id = ${ticket.user}`
-            );
-
-            if (userRows && userRows.length > 0) {
-                const user = userRows[0];
-                const userTbody = this.shadow.querySelector('#userTable tbody');
-                const userTr = document.createElement('tr');
-                userTr.innerHTML = `
-                    <td>${user.id}</td>
-                    <td>${user.username}</td>
-                    <td>${user.email}</td>
-                    <td>${user.first_name}</td>
-                    <td>${user.surname}</td>
-                    <td>${user.birth_date}</td>
-                `;
-                userTbody.appendChild(userTr);
-            } else {
-                this.showError('User who issued this ticket was not found.');
-            }
-        } catch (err) {
-            this.showError('An error occurred while loading ticket information.');
-            // In development you might log the error
-            console.error(err);
+    // Helper to set text inside the shadow DOM
+    setText(id, value) {
+        const el = this.shadow.getElementById(id);
+        if (el) {
+            el.textContent = value ?? '—';
         }
     }
 
-    /**
-     * Small helper that prints an error message inside the widget.
-     * @param {string} msg
-     */
-    showError(msg) {
-        // Clear the main container and emit the message.
-        this.shadow.innerHTML = `<div class="ticket-container"><p style="color:red;">${msg}</p></div>`;
+    // Fetch ticket and user data and populate the UI
+    async loadData() {
+        try {
+            const ticketRows = await this.core.db.run(`SELECT * FROM Ticket WHERE id = ${this.ticketId}`);
+            if (ticketRows.length === 0) {
+                this.shadow.innerHTML = `<p>Ticket with ID ${this.ticketId} not found.</p>`;
+                return;
+            }
+            const ticket = ticketRows[0];
+
+            // Populate ticket fields (excluding user id)
+            this.setText('t_id', ticket.id);
+            this.setText('t_entry', ticket.entry_date);
+            this.setText('t_resp_date', ticket.response_date);
+            this.setText('t_resp_text', ticket.response_text);
+            this.setText('t_text', ticket.text);
+
+            // Now fetch user information
+            const userRows = await this.core.db.run(`SELECT * FROM User WHERE id = ${ticket.user}`);
+            if (userRows.length === 0) {
+                this.shadow.querySelector('.user-info').innerHTML = '<tr><td colspan="2">User information not available.</td></tr>';
+                return;
+            }
+
+            const user = userRows[0];
+            this.setText('u_id', user.id);
+            this.setText('u_username', user.username);
+            this.setText('u_email', user.email);
+            this.setText('u_first', user.first_name);
+            this.setText('u_surname', user.surname);
+            this.setText('u_birth', user.birth_date);
+
+        } catch (err) {
+            this.shadow.innerHTML = `<p>Error loading data: ${err.message}</p>`;
+        }
     }
 }

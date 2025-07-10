@@ -1,0 +1,17 @@
+CREATE TABLE User (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL UNIQUE,
+    first_name TEXT NOT NULL,
+    surname TEXT NOT NULL,
+    birth_date DATE NOT NULL
+);
+
+CREATE TABLE Ticket (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	user INTEGER NOT NULL,
+	text TEXT NOT NULL,
+	entry_date DATE NOT NULL,
+	response_date DEFAULT NULL,
+    response_text TEXT DEFAULT NULL
+);

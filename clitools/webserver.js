@@ -10,7 +10,9 @@ async function initDB() {
 	const SQL = await initSqlJs({});
 
 	db = new SQL.Database();
-	let sqlstr = 'CREATE TABLE User (\
+	var sqlstr = fs.readFileSync("apps/webcogs-example-app/datamodel.sql", "utf8");
+	db.run(sqlstr);
+	/*let sqlstr = 'CREATE TABLE User (\
 		id INTEGER PRIMARY KEY AUTOINCREMENT,\
 		username TEXT NOT NULL UNIQUE,\
 		email TEXT NOT NULL UNIQUE,\
@@ -18,18 +20,19 @@ async function initDB() {
 		surname TEXT NOT NULL,\
 		birth_date DATE NOT NULL\
 	);\
-	INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith","1998-05-06");\
-	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee","1978-10-01");\
   CREATE TABLE Ticket(\
   		id INTEGER PRIMARY KEY AUTOINCREMENT,\
       user INTEGER NOT NULL,\
       text TEXT NOT NULL,\
       entry_date DATE NOT NULL,\
       response_date DEFAULT NULL\
-  );\
-	INSERT INTO Ticket VALUES (1,1,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01",NULL);\
-	INSERT INTO Ticket VALUES (2,1,"The problem with my phone persists, please help.","2025-07-07",NULL);\
-	INSERT INTO Ticket VALUES (3,2,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03",NULL);\
+  );\*/
+	sqlstr = 
+  'INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith","1998-05-06");\
+	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee","1978-10-01");\
+  INSERT INTO Ticket VALUES (1,1,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01",NULL,NULL);\
+	INSERT INTO Ticket VALUES (2,1,"The problem with my phone persists, please help.","2025-07-07",NULL,NULL);\
+	INSERT INTO Ticket VALUES (3,2,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03",NULL,NULL);\
 	'
 	db.run(sqlstr);
 

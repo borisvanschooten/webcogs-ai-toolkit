@@ -1,0 +1,40 @@
+{
+	"name": "Ticketing App",
+	"description": "Simple demo app for demonstrating WebCogs plugins",
+	"version": "0.1",
+	"ai_vendor": "openai",
+	"ai_model": "o3",
+	"system_prompts": [
+		{ "file": "js/webcogs_core_docs.md" },
+		{ "file": "apps/webcogs-example-app/app_docs.md" },
+		{ "text": "\n## SQL table definitions\n\n", "file": "apps/webcogs-example-app/datamodel.sql"}
+	],
+	"wd": "apps/webcogs-example-app/plugins/",
+	"targets": [
+		{
+			"name": "mainmenu",
+			"prompts": [ { "file": "mainmenu/plugin_docs.md" } ],
+			"file": "mainmenu/plugin.js"
+		},
+		{
+			"name": "useradmin",
+			"prompts": [ { "file": "useradmin/plugin_docs.md" } ],
+			"file": "useradmin/plugin.js"
+		},
+		{
+			"name": "user_overview",
+			"prompts": [ { "file": "user_overview/plugin_docs.md" } ],
+			"file": "user_overview/plugin.js"
+		},
+		{
+			"name": "ticketadmin",
+			"prompts": [ { "file": "ticketadmin/plugin_docs.md" } ],
+			"file": "ticketadmin/plugin.js"
+		},
+		{
+			"name": "ticket_overview",
+			"prompts": [ { "file": "ticket_overview/plugin_docs.md" } ],
+			"file": "ticket_overview/plugin.js"
+		}
+	]
+}
