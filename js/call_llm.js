@@ -40,8 +40,10 @@ async function callLLM(client,messages,tools,aifnPrefix,generated_functions,mode
 						}
 					}
 				}
-
-				console.log("Calling tool: " + fn, "args:" + JSON.stringify(unpackedArgs))
+				// XXX suppress when in cli mode, should be an option
+				if (showToolCallsElem) {
+					console.log("Calling tool: " + fn, "args:" + JSON.stringify(unpackedArgs))
+				}
 				let funcCalled = false
 				var errorMessage = null
 				var result = null

@@ -12,6 +12,11 @@
 	"wd": "apps/webcogs-example-app/plugins/",
 	"targets": [
 		{
+			"name": "login",
+			"prompts": [ { "file": "login/plugin_docs.md" } ],
+			"file": "login/plugin.js"
+		},
+		{
 			"name": "mainmenu",
 			"prompts": [ { "file": "mainmenu/plugin_docs.md" } ],
 			"file": "mainmenu/plugin.js"

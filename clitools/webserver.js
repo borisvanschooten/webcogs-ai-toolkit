@@ -12,21 +12,14 @@ async function initDB() {
 	db = new SQL.Database();
 	var sqlstr = fs.readFileSync("apps/webcogs-example-app/datamodel.sql", "utf8");
 	db.run(sqlstr);
-	/*let sqlstr = 'CREATE TABLE User (\
-		id INTEGER PRIMARY KEY AUTOINCREMENT,\
-		username TEXT NOT NULL UNIQUE,\
-		email TEXT NOT NULL UNIQUE,\
-		first_name TEXT NOT NULL,\
-		surname TEXT NOT NULL,\
-		birth_date DATE NOT NULL\
+	sqlstr = 'CREATE TABLE Passwords (\
+		username TEXT NOT NULL,\
+		password TEXT NOT NULL\
 	);\
-  CREATE TABLE Ticket(\
-  		id INTEGER PRIMARY KEY AUTOINCREMENT,\
-      user INTEGER NOT NULL,\
-      text TEXT NOT NULL,\
-      entry_date DATE NOT NULL,\
-      response_date DEFAULT NULL\
-  );\*/
+  INSERT INTO Passwords VALUES ("admin","admin")\
+  '
+	db.run(sqlstr);
+
 	sqlstr = 
   'INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith","1998-05-06");\
 	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee","1978-10-01");\
@@ -37,8 +30,10 @@ async function initDB() {
 	db.run(sqlstr);
 
 	const res = db.exec("SELECT * FROM User");
-	console.log(JSON.stringify(res,null,4))
+	//console.log(JSON.stringify(res,null,4))
 }
+
+var tokenStore = {}
 
 initDB()
 
@@ -65,8 +60,12 @@ app.get('/db/run', async (req, res) => {
     return res.status(503).json({ error: 'Database not initialized' });
   }
   const query = req.query.query;
-  if (!query) {
-    return res.status(400).json({ error: 'No query provided' });
+  const token = req.query.token;
+  if (!query || !token) {
+    return res.status(400).json({ error: 'Query and token nust be provided' });
+  }
+  if (!Object.values(tokenStore).includes(token)) {
+    return res.status(401).json({ error: 'Invalid token' });
   }
   try {
     const result = db.exec(query);
@@ -76,12 +75,38 @@ app.get('/db/run', async (req, res) => {
   }
 });
 
+
+
+
+app.get('/auth/login', async (req, res) => {
+  if (!db) {
+    return res.status(503).json({ error: 'Database not initialized' });
+  }
+
+  const { username, password } = req.query;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password must be provided' });
+  }
+
+  try {
+    const result = db.exec(`SELECT * FROM Passwords WHERE username = '${username}' AND password = '${password}'`);
+    if (result.length > 0) {
+      const token = require('crypto').randomBytes(32).toString('hex');
+      tokenStore[`${username}#${password}`] = token;
+      return res.json({ token });
+    } else {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.use((req, res, next) => {
   const filePath = path.join(process.cwd(), decodeURIComponent(req.path));
   fs.stat(filePath, (err, stat) => {
     if (!err && stat.isFile()) {
       const ext = path.extname(filePath).toLowerCase();
-	  console.log(ext)
       const mime = mimeTypes[ext];
       if (mime) {
         res.type(mime);

@@ -3,4 +3,6 @@ Write a plugin that shows the main menu, which is a horizontal area at the top. 
 - Users - route to useradmin
 - Tickets - route to ticketadmin
 
-At the right is a logout button that should route to logout.
+The menu item that is selected by the user should be highlighted.
+
+At the right is a logout button that routes to logout.  

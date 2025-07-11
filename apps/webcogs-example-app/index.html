@@ -48,9 +48,35 @@
                 border-bottom: 1px solid #ddd;
             }
         }
+        #overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+        #modal_dialog {
+            position: relative;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px;
+            width: 80%;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
     </style>
 </head>
 <body>
+    <div id="overlay">
+        <div id="modal_dialog">
+            Dialog
+        </div>
+    </div>
     <div id="nav_bar" class="menu">
         Menu Area
     </div>
@@ -62,23 +88,55 @@
             Main Content Area
         </div>
     </div>
+<script>
+
+</script>
 <script type="module">
-	import {SQLDb,WebCogsCore} from "../../js/webcogs_core.js"
-	function router(route, ...params) {
-		console.log("Router received route request: "+route)
-		core.initPlugin(route, ...params)
-	}
-	var db = new SQLDb("db/run")
-	var core = new WebCogsCore(router,db)
-	async function init() {
-		await core.loadPlugin("../apps/webcogs-example-app/plugins/useradmin/plugin.js","useradmin")
-		await core.loadPlugin("../apps/webcogs-example-app/plugins/ticketadmin/plugin.js","ticketadmin")
-		await core.loadPlugin("../apps/webcogs-example-app/plugins/mainmenu/plugin.js","mainmenu")
-		await core.loadPlugin("../apps/webcogs-example-app/plugins/user_overview/plugin.js","user_overview")
-		await core.loadPlugin("../apps/webcogs-example-app/plugins/ticket_overview/plugin.js","ticket_overview")
-		core.initPlugin("mainmenu")
-	}
-	init();
+// start framework ----------------------------------
+import {SQLDb,WebCogsCore} from "../../js/webcogs_core.js"
+function router(route, ...params) {
+    console.log("Router received route request: "+route)
+    // check if route requires modal dialog
+    if (route == "login") {
+       document.getElementById('overlay').style.display = 'block';
+    } else if (route == "logged_in") {
+        core.login(params[0],params[1]).then((token) => {
+            if (token) {
+                db.setToken(token)
+                document.getElementById('overlay').style.display = 'none';
+                core.initPlugin("mainmenu")
+                //console.log(token)
+            } else {
+                core.initPlugin("login","Failed to login (note: demo login is 'admin' / 'admin')")
+            }
+        })
+        //alert("Logged in with: "+JSON.stringify(params))
+    } else if (route == "logout") {
+        db.setToken(null)
+        core.initPlugin("login")
+        document.getElementById('overlay').style.display = 'block';
+    } else {
+       document.getElementById('overlay').style.display = 'none';
+       core.initPlugin(route, ...params)
+    }
+}
+function mounter(location, html_code, css_code) {
+    // just delegate to default implementation
+    return core.mountShadowDom(location,html_code,css_code)
+}
+var db = new SQLDb("db/run")
+var core = new WebCogsCore(router,mounter,db)
+async function init() {
+    await core.loadPlugin("../apps/webcogs-example-app/plugins/login/plugin.js","login")
+    await core.loadPlugin("../apps/webcogs-example-app/plugins/useradmin/plugin.js","useradmin")
+    await core.loadPlugin("../apps/webcogs-example-app/plugins/ticketadmin/plugin.js","ticketadmin")
+    await core.loadPlugin("../apps/webcogs-example-app/plugins/mainmenu/plugin.js","mainmenu")
+    await core.loadPlugin("../apps/webcogs-example-app/plugins/user_overview/plugin.js","user_overview")
+    await core.loadPlugin("../apps/webcogs-example-app/plugins/ticket_overview/plugin.js","ticket_overview")
+    document.getElementById('overlay').style.display = 'block';
+    core.initPlugin("login")
+}
+init();
 </script>
 </body>
 </html>

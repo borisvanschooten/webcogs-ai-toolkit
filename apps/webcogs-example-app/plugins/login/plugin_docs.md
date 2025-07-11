@@ -1,0 +1,1 @@
+Write a plugin that shows a login screen as a modal dialog. It has two fields: username and password, and a button "login". When login is pressed, route to "logged_in" with username and password as parameters. The constructor takes an extra string parameter "error". If defined, the error should be shown under the login button.

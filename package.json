@@ -1,6 +1,11 @@
 {
+  "name": "webcogs",
+  "version": "0.1.0",
+  "bin": {
+     "buildcog": "./clitools/build_ai_module.js"
+  },
   "dependencies": {
-    "browserify": "^17.0.1",
+    "browserify": "^17.0.1",  
     "colors": "^1.4.0",
     "diff": "^8.0.2",
     "express": "^5.1.0",

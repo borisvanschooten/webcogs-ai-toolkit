@@ -1,11 +1,13 @@
 export class SQLDb {
 	baseurl;
+	token=null;
 	constructor(baseurl) {
 		this.baseurl = baseurl
 	}
 	async run(query) {
 		const url = new URL(this.baseurl, window.location.origin);
 		url.searchParams.append('query', query);
+		url.searchParams.append('token', this.token);
 		const res = await fetch(url, {
 			method: 'GET',
 			headers: {
@@ -27,27 +29,45 @@ export class SQLDb {
 		console.log(`SQLDb returned ${ret.length} results.`)
 		return ret
 	}
+	setToken(token) {
+		this.token = token
+	}
 }
 
 export class WebCogsCore {
 
 	routeCallback = null;
+	mountCallback = null;
 	loadedPlugins = {};
 	db = null;
 
-	constructor(routeCallback,db) {
+	constructor(routeCallback,mountCallback,db) {
 		this.db = db;
 		this.routeCallback = routeCallback;
+		this.mountCallback = mountCallback;
 	}
 
-    /**
-     * Mounts the supplied HTML and CSS code into a Shadow DOM attached to the given element.
+    /** Widget mount function for plugins.  Default implementation is to mount a shadow DOM on the elementID given by location.
+     * @param {string} location - A location string
+     * @param {string} html_code - The HTML code to be rendered
+     * @param {string} css_code - The CSS code to be applied
+	 * @return {htmlElement} - the root element on which the widget was mounted
+     */
+	mount(location, html_code, css_code) {
+		if (this.mountCallback) {
+			return this.mountCallback(location,html_code,css_code)
+		} else {
+			return this.mountShadowDom(location,html_code,css_code)
+		}
+	}
+
+    /** Mounts the supplied HTML and CSS code into a Shadow DOM attached to the given element.
      * @param {string} location - The id of the target HTML element.
      * @param {string} html_code - The HTML code to be rendered inside the Shadow DOM.
      * @param {string} css_code - The CSS code to be applied within the Shadow DOM.
 	 * @return {htmlElement} - the shadow root
      */
-	mount(location, html_code, css_code) {
+	mountShadowDom(location, html_code, css_code) {
         const host = document.getElementById(location);
         if (!host) return;
 		// purge any old shadow root and any event listeners by cloning host node
@@ -66,10 +86,21 @@ export class WebCogsCore {
 		return shadow;
     }
 
+	/** Route function for plugins. Default implementation is to invoke the plugin named "location".
+	 * @param {string} location - string that indicates where to route to
+	 */
 	route(location,...params) {
-		this.routeCallback(location,...params)
+		if (this.routeCallback) {
+			this.routeCallback(location,...params)
+		} else {
+			this.initPlugin(route, ...params)
+		}
 	}
 
+	/** Load plugin from JS file
+	 * @param {string} path - location of JS file
+	 * @param {string} name - name to give to the plugin
+	 */
 	async loadPlugin(path, name) {
 		try {
 			//console.log(`Loading plugin ${name}...`)
@@ -93,13 +124,51 @@ export class WebCogsCore {
         }
 	}
 
+	/** Init a previously loaded plugin. Constructs the class; passes any custom arguments on to the class constructor.
+	 * @param {string} name - the name given to the plugin at load time
+	 * @return {object} - the created instance, or null on failure
+	 */
 	initPlugin(name,...args) {
 		if (this.loadedPlugins[name]) {
-			var instance = new this.loadedPlugins[name](this,...args)
-			console.log(instance)
+			return new this.loadedPlugins[name](this,...args)
 		} else {
 			console.error(`Cannot find plugin ${name}`)
+			return null
 		}
 	}
+
+    /** Authenticates a user by username and password, retrieves a token upon success.
+     * @param {string} username - The username for authentication.
+     * @param {string} password - The password for authentication.
+     * @return {Promise<string>} - A promise that resolves to the token if authentication is successful.
+     */
+    async login(username, password) {
+        try {
+            const url = new URL('auth/login', window.location.origin);
+            url.searchParams.append('username', username);
+            url.searchParams.append('password', password);
+
+            const res = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!res.ok) {
+                throw new Error(`Failed to authenticate: ${res.statusText}`);
+            }
+
+            const res_obj = await res.json();
+            if (res_obj.token) {
+                return res_obj.token;
+            } else {
+                throw new Error('Authentication failed: No token received');
+            }
+        } catch (error) {
+            console.error('Error during authentication:', error);
+            return null;
+        }
+    }
 
 }
