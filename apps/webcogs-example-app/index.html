@@ -103,6 +103,7 @@ function router(route, ...params) {
        document.getElementById('overlay').style.display = 'block';
     } else if (route == "logged_in") {
         core.login(params[0],params[1]).then((token) => {
+            // XXX Bad security! At the least, use HttpOnly cookies for storing the token 
             if (token) {
                 db.setToken(token)
                 document.getElementById('overlay').style.display = 'none';

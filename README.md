@@ -31,8 +31,6 @@ The basic idea behind the Webcogs app building toolkit is a kernel-plugin archit
 - a framework agnostic prompts-as-code build tool which supports modular prompt structuring.  This allows building a prompt out of select parts of the core specifications, such as API docs and SQL and CSS definitions, along with plugin-specific prompt text.  It also includes a diff tool which shows differences between the current prompt and the prompt with which particular code was generated.  It makes it easier to update AI generated code when specifications are updated, and fix issues with the AI generated code with prompt engineering rather than direct changes in the code. 
 - a framework that provides a specific core/plugin structure for web apps. The core app is a HTML single page application, where the plugins handle specific pages and widgets.
 
-An example application is found in apps/webcogs-example-app/
-
 ### Using buildcog + a prompt manifest to structure prompts
 
 Webcogs provides the **buildcog** tool, which takes a json file called a *prompt manifest* which it uses to build a prompt, then calls a LLM, and outputs the AI generated code to a target file. The prompt manifest defines the LLM model, prompts, and build targets.  It enables you to structure your prompts in a modular framework-agnostic way.  
@@ -59,30 +57,36 @@ Prompt manifest format is as follows:
 	"ai_vendor": "openai",
 	"ai_model": "o3",
 	"system_prompts": [
-		{ "file": "js/webcogs_core_docs.md" },
-		{ "file": "apps/webcogs-example-app/app_docs.md" },
-		{ "text": "\n## SQL table definitions\n\n", "file": "apps/webcogs-example-app/datamodel.sql"}
+		{ "file": "../../js/webcogs_core_docs.md" },
+		{ "file": "app_docs.md" },
+		{ "text": "\n## CSS definitions\n\n", "file": "basestyles.css"},
+		{ "text": "\n## SQL table definitions\n\n", "file": "datamodel.sql"}
 	],
-	"wd": "apps/webcogs-example-app/plugins/",
+	"wd": "plugins/",
 	"targets": [
 		{
-			"name": "mainmenu",
-			"prompts": [ { "file": "mainmenu/plugin_docs.md" } ],
-			"file": "mainmenu/plugin.js"
+			"name": "login",
+			"prompts": [ { "file": "login/plugin_docs.md" } ],
+			"file": "login/plugin.js"
 		},
 		{
-			"name": "useradmin",
-			"prompts": [ { "file": "useradmin/plugin_docs.md" } ],
-			"file": "useradmin/plugin.js"
+			"name": "sidebar_tickets",
+			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all open tickets, sorted by date. Open tickets are tickets for which response = NULL.  If you click on a ticket, route to ticket_overview." } ],
+			"file": "sidebar_tickets/plugin.js"
 		},
-		...
+		{
+			"name": "ticketadmin",
+			"prompts": [ { "file": "ticketadmin/plugin_docs.md" } ],
+			"file": "ticketadmin/plugin.js"
+		},
+		[...]
 	]
 }
 ```
 
 ai_vendor and ai_model refer to the LLM to use. Currently only openai is supported.  In system_prompts you can define a series of prompts. They are simply concatenated and fed into the LLM as the system prompt.  In targets you can define multiple build targets, each with its own prompts and output file.  For each build target, you can again define a series of prompts which are concatenated to form the user prompt used to generate the code. 
 
-The buildcog command line tool can then be used to build targets.  You first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the key, you can use the following command to re-generate plugins for the example app:
+The buildcog command line tool can now be used to build targets.  You first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the key, you can use the following command to re-generate plugins for the example app:
 
 ```
 buildcog build <target_name> apps/webcogs-example-app/manifest.json
@@ -107,7 +111,7 @@ buildcog build-changed all apps/webcogs-example-app/manifest.json
 ```
 This will build all targets for which the prompts have changed.
 
-Note that the build tool has **no** way to see if the generated code was hand-edited, so it will happily overwrite your manual changes when building.  If generated code cannot be fixed using prompt engineering, maybe it's not suitable for fully automatic generation, and should be removed from the build targets.
+Note that the build tool has **no** way to see if the generated code was hand-edited, so it will happily overwrite your manual changes when building.  If generated code cannot be fixed using prompt engineering, maybe it's not suitable for fully automatic generation, and should be handled differently.
 
 ### WebCogsCore app framework
 
@@ -124,6 +128,7 @@ The core is a HTML application, which basically does the following:
 
 WebCogsCore functions for the app:
 - loadPlugin(pluginPath,name): (Pre)load plugin
+- loadPlugins(appRoot,manifestFile): (Pre)load plugins from manifest
 - initPlugin(name): start the plugin
 
 WebCogsCore functions for plugins:
@@ -134,18 +139,22 @@ WebCogsCore also comes with a simple SQL interface for handling data.
 
 A plugin always consists of a single class with a constructor that initialises the plugin and any associated widgets.  A WebCogsCore object is passed in, through which the plugin has access to the core API. Constructing a new instance resets the state of the plugin.  Custom arguments can be used to pass specific information to the constructor.
 
-Check out apps/webcogs-example-app as an example of how this works. The app has to be run from a webserver that also provides an SQL endpoint. A simple webserver with example data for the app is provided. Run it with:
+### Example WebCogs app
+
+An example WebCogs application is found in apps/webcogs-example-app/.  The app has to be run from a webserver that also provides SQL and auth endpoints. A simple webserver with example data for the app is provided. Run it with:
 ```
 node ./clitools/webserver.js
 ``` 
+Now, you can run the app from http://localhost:3000/apps/webcogs-example-app/index.html.
 
-### Future work
+Log in with username: admin, pasword: admin.
+
+## Future work
 
 This framework is very much in the experimental stage, and there is obviously a lot to be done. For example:
 
 - Suitable test harness
 - Handling browser navigation (e.g. the back button)
-- Visual styling prompts
 - Multiple output files in one target
 - More extensive core-plugin architecture for handling other things, like algoritms and backends
 - Support for more AI vendors and local models
