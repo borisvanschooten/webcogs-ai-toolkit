@@ -2,6 +2,7 @@ Write a plugin that shows the main menu, which is a horizontal area at the top. 
 
 - Users - route to useradmin
 - Tickets - route to ticketadmin
+- Stats - route to ticket_stats
 
 The menu item that is selected by the user should be highlighted.
 

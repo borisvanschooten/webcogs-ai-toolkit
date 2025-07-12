@@ -61,6 +61,12 @@ app.get('/db/run', async (req, res) => {
   }
   const query = req.query.query;
   const token = req.query.token;
+  var params = [];
+  if (typeof req.query.params != "undefined") {
+    params = JSON.parse(req.query.params);
+    console.log("Got params: "+req.query.params)
+    console.log(params)
+  }
   if (!query || !token) {
     return res.status(400).json({ error: 'Query and token nust be provided' });
   }
@@ -68,7 +74,7 @@ app.get('/db/run', async (req, res) => {
     return res.status(401).json({ error: 'Invalid token' });
   }
   try {
-    const result = db.exec(query);
+    const result = db.exec(query,params);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });

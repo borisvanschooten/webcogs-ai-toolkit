@@ -8,3 +8,9 @@
 ## core.route routes
 
 A route is a string that indicates a widget plugin name.
+
+## Style guide
+
+Widgets should always display a title.
+
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.

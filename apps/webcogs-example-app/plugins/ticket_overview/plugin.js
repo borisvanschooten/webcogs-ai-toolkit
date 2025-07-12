@@ -28,13 +28,33 @@ core.db is a SQLite compatible database object. It has the following functions:
 
 ## available core.mount locations
 
-- main
-- nav_bar
-- side_bar
+- modal_dialog - modal dialog that displays as an overlay
+- main - main area of screen
+- nav_bar - navigation bar for main menu
+- side_bar - side bar for submenus
 
 ## core.route routes
 
 A route is a string that indicates a widget plugin name.
+
+## Style guide
+
+Widgets should always display a title.
+
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+
+## CSS definitions
+
+:root {
+  --text-color: #000;
+  --main-bg-color: #fff;
+  --nav_bar-bg-color: #eee;
+  --top_menu-bg-color: #222;
+  --top-menu-text-color: #fff;
+  --button-bg-color: #aaf;
+  --button-text-color: #006;
+}
 
 
 ## SQL table definitions
@@ -58,93 +78,154 @@ CREATE TABLE Ticket (
 );
 
 @webcogs_user_prompt
-Write a plugin that shows a particular tickets in the database. All ticket fields except user ID should be shown in a table. he ticket text should be shown in a large area.  The user who issued the ticket should be shown in a table below the ticket. The ticket ID is passed as a custom parameter to the constructor.
+Write a plugin that shows a particular ticket in the database. All ticket fields except user ID should be shown in a table. The ticket text should be shown in a large area.  The user who issued the ticket should be shown in a table below the ticket. The ticket ID is passed as a custom parameter to the constructor. If the response_text is NULL, show a button "Respond" which routes to ticket_reponse.
 
 @webcogs_end_prompt_section*/
+// Ticket viewer plugin
+// Shows a single ticket together with the user that created it.
+// The constructor receives the ticket id as the 2nd parameter.
+
 export default class TicketViewer {
     constructor(core, ticketId) {
         this.core = core;
-        this.ticketId = parseInt(ticketId, 10);
+        this.ticketId = ticketId;
+        this.ticket = null;
+        this.user = null;
+        this.shadow = null;
+        this.init();
+    }
 
-        const html_code = `
-            <div class="ticket-container">
+    async init() {
+        await this.fetchData();
+        this.render();
+    }
+
+    // Fetch the ticket and its user data from the database
+    async fetchData() {
+        // Load ticket
+        const ticketRows = await this.core.db.run(`SELECT id, text, entry_date, response_date, response_text, user FROM Ticket WHERE id = ${this.ticketId} LIMIT 1;`);
+        if (!ticketRows || ticketRows.length === 0) {
+            this.ticket = null;
+            return;
+        }
+        this.ticket = ticketRows[0];
+
+        // Load user that created the ticket
+        const userRows = await this.core.db.run(`SELECT username, email, first_name, surname, birth_date FROM User WHERE id = ${this.ticket.user} LIMIT 1;`);
+        this.user = userRows && userRows.length > 0 ? userRows[0] : null;
+    }
+
+    render() {
+        // Prepare HTML
+        let html = "";
+        if (!this.ticket) {
+            html = `<div class="error">Ticket with ID ${this.ticketId} not found.</div>`;
+        } else {
+            // Ticket info table (excluding user id)
+            html = `
+                <h2>Ticket #${this.ticket.id}</h2>
                 <table class="ticket-info">
-                    <tr><th>ID</th><td id="t_id">Loading…</td></tr>
-                    <tr><th>Entry date</th><td id="t_entry">Loading…</td></tr>
-                    <tr><th>Response date</th><td id="t_resp_date">Loading…</td></tr>
-                    <tr><th>Response text</th><td id="t_resp_text">Loading…</td></tr>
+                    <tr><th>ID</th><td>${this.ticket.id}</td></tr>
+                    <tr><th>Entry date</th><td>${this.ticket.entry_date}</td></tr>
+                    <tr><th>Response date</th><td>${this.ticket.response_date || "-"}</td></tr>
+                    <tr><th>Response text</th><td>${this.ticket.response_text || "-"}</td></tr>
                 </table>
-                <h3>Ticket Text</h3>
-                <div class="ticket-text" id="t_text">Loading…</div>
-                <h3>User Info</h3>
-                <table class="user-info">
-                    <tr><th>ID</th><td id="u_id">Loading…</td></tr>
-                    <tr><th>Username</th><td id="u_username">Loading…</td></tr>
-                    <tr><th>Email</th><td id="u_email">Loading…</td></tr>
-                    <tr><th>First name</th><td id="u_first">Loading…</td></tr>
-                    <tr><th>Surname</th><td id="u_surname">Loading…</td></tr>
-                    <tr><th>Birth date</th><td id="u_birth">Loading…</td></tr>
-                </table>
-            </div>
+
+                <h3>Description</h3>
+                <div class="ticket-text">${this.escapeHTML(this.ticket.text)}</div>
+            `;
+
+            // Respond button when no response yet
+            if (!this.ticket.response_text) {
+                html += `<button id="respond-btn" class="respond-btn">Respond</button>`;
+            }
+
+            // User info table
+            if (this.user) {
+                html += `
+                    <h3>User who created the ticket</h3>
+                    <table class="user-info">
+                        <tr><th>Username</th><td>${this.user.username}</td></tr>
+                        <tr><th>First name</th><td>${this.user.first_name}</td></tr>
+                        <tr><th>Surname</th><td>${this.user.surname}</td></tr>
+                        <tr><th>Email</th><td>${this.user.email}</td></tr>
+                        <tr><th>Birth date</th><td>${this.user.birth_date}</td></tr>
+                    </table>
+                `;
+            }
+        }
+
+        const css = `
+            :host {
+                color: var(--text-color);
+                background: var(--main-bg-color);
+                display: block;
+                padding: 1rem;
+                font-family: sans-serif;
+            }
+            h2, h3 { margin: 0.5rem 0; }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                margin-bottom: 1rem;
+            }
+            th {
+                text-align: left;
+                padding: 0.5rem;
+                background: #ddd;
+            }
+            td {
+                padding: 0.5rem;
+                border-bottom: 1px solid #ccc;
+            }
+            .ticket-text {
+                white-space: pre-wrap;
+                border: 1px solid #ccc;
+                min-height: 120px;
+                padding: 0.75rem;
+                background: #f9f9f9;
+                margin-bottom: 1rem;
+            }
+            .respond-btn {
+                background: var(--button-bg-color);
+                color: var(--button-text-color);
+                padding: 0.5rem 1rem;
+                border: none;
+                cursor: pointer;
+                font-size: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .respond-btn:hover {
+                opacity: 0.9;
+            }
+            .error {
+                color: red;
+                font-weight: bold;
+            }
         `;
 
-        const css_code = `
-            .ticket-container { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; }
-            .ticket-info, .user-info { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-            .ticket-info th, .ticket-info td, .user-info th, .user-info td { border: 1px solid #ddd; padding: 8px; }
-            .ticket-info th, .user-info th { background-color: #f2f2f2; text-align: left; }
-            .ticket-text { padding: 10px; border: 1px solid #ddd; min-height: 150px; white-space: pre-wrap; background-color: #fafafa; }
-        `;
+        // Mount in main area
+        this.shadow = this.core.mount('main', html, css);
 
-        // Mount the UI and keep a reference to the shadow root
-        this.shadow = core.mount('main', html_code, css_code);
-
-        // Kick off data loading
-        this.loadData();
-    }
-
-    // Helper to set text inside the shadow DOM
-    setText(id, value) {
-        const el = this.shadow.getElementById(id);
-        if (el) {
-            el.textContent = value ?? '—';
+        // Wire button event
+        if (this.shadow) {
+            const respondBtn = this.shadow.getElementById('respond-btn');
+            if (respondBtn) {
+                respondBtn.addEventListener('click', () => {
+                    this.core.route('ticket_response', this.ticketId);
+                });
+            }
         }
     }
 
-    // Fetch ticket and user data and populate the UI
-    async loadData() {
-        try {
-            const ticketRows = await this.core.db.run(`SELECT * FROM Ticket WHERE id = ${this.ticketId}`);
-            if (ticketRows.length === 0) {
-                this.shadow.innerHTML = `<p>Ticket with ID ${this.ticketId} not found.</p>`;
-                return;
-            }
-            const ticket = ticketRows[0];
-
-            // Populate ticket fields (excluding user id)
-            this.setText('t_id', ticket.id);
-            this.setText('t_entry', ticket.entry_date);
-            this.setText('t_resp_date', ticket.response_date);
-            this.setText('t_resp_text', ticket.response_text);
-            this.setText('t_text', ticket.text);
-
-            // Now fetch user information
-            const userRows = await this.core.db.run(`SELECT * FROM User WHERE id = ${ticket.user}`);
-            if (userRows.length === 0) {
-                this.shadow.querySelector('.user-info').innerHTML = '<tr><td colspan="2">User information not available.</td></tr>';
-                return;
-            }
-
-            const user = userRows[0];
-            this.setText('u_id', user.id);
-            this.setText('u_username', user.username);
-            this.setText('u_email', user.email);
-            this.setText('u_first', user.first_name);
-            this.setText('u_surname', user.surname);
-            this.setText('u_birth', user.birth_date);
-
-        } catch (err) {
-            this.shadow.innerHTML = `<p>Error loading data: ${err.message}</p>`;
-        }
+    // Simple HTML escaper to prevent HTML injection in ticket text
+    escapeHTML(str) {
+        if (!str) return "";
+        return str
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
     }
 }

@@ -5,11 +5,12 @@
 	"ai_vendor": "openai",
 	"ai_model": "o3",
 	"system_prompts": [
-		{ "file": "js/webcogs_core_docs.md" },
-		{ "file": "apps/webcogs-example-app/app_docs.md" },
-		{ "text": "\n## SQL table definitions\n\n", "file": "apps/webcogs-example-app/datamodel.sql"}
+		{ "file": "../../js/webcogs_core_docs.md" },
+		{ "file": "app_docs.md" },
+		{ "text": "\n## CSS definitions\n\n", "file": "basestyles.css"},
+		{ "text": "\n## SQL table definitions\n\n", "file": "datamodel.sql"}
 	],
-	"wd": "apps/webcogs-example-app/plugins/",
+	"wd": "plugins/",
 	"targets": [
 		{
 			"name": "login",
@@ -32,6 +33,11 @@
 			"file": "user_overview/plugin.js"
 		},
 		{
+			"name": "sidebar_tickets",
+			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all open tickets, sorted by date. Open tickets are tickets for which response = NULL.  If you click on a ticket, route to ticket_overview." } ],
+			"file": "sidebar_tickets/plugin.js"
+		},
+		{
 			"name": "ticketadmin",
 			"prompts": [ { "file": "ticketadmin/plugin_docs.md" } ],
 			"file": "ticketadmin/plugin.js"
@@ -40,6 +46,16 @@
 			"name": "ticket_overview",
 			"prompts": [ { "file": "ticket_overview/plugin_docs.md" } ],
 			"file": "ticket_overview/plugin.js"
+		},
+		{
+			"name": "ticket_response",
+			"prompts": [ { "text": "Show the ticket fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor.  If the response text is null, show a textarea in which a response can be entered, with a submit button to submit it.  If the response text is not null, show it in a large area.  If a response is submitted, use SQL UPDATE to set the response text and date, and route to ticket_response." } ],
+			"file": "ticket_response/plugin.js"
+		},
+		{
+			"name": "ticket_stats",
+			"prompts": [ { "text": "Show a bar chart that shows the number of submitted tickets per day over the last 30 days. Show dates in the form mm-dd at the x axis, and ticks on the y axis." } ],
+			"file": "ticket_stats/plugin.js"
 		}
 	]
 }

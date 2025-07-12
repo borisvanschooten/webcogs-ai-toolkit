@@ -24,7 +24,7 @@ core.route has the following parameters:
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
-- async function db.run(sql_statement) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects. Each object represents a record, with keys representing the column names and values the record values.
+- async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
 ## available core.mount locations
 
@@ -36,6 +36,25 @@ core.db is a SQLite compatible database object. It has the following functions:
 ## core.route routes
 
 A route is a string that indicates a widget plugin name.
+
+## Style guide
+
+Widgets should always display a title.
+
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+
+## CSS definitions
+
+:root {
+  --text-color: #000;
+  --main-bg-color: #fff;
+  --nav_bar-bg-color: #eee;
+  --top_menu-bg-color: #222;
+  --top-menu-text-color: #fff;
+  --button-bg-color: #aaf;
+  --button-text-color: #006;
+}
 
 
 ## SQL table definitions
@@ -63,111 +82,110 @@ Write a plugin that shows the main menu, which is a horizontal area at the top. 
 
 - Users - route to useradmin
 - Tickets - route to ticketadmin
+- Stats - route to ticket_stats
 
-At the right is a logout button that should route to logout.  The menu item that is selected by the user should be highlighted.
+The menu item that is selected by the user should be highlighted.
+
+At the right is a logout button that routes to logout.  
 
 @webcogs_end_prompt_section*/
-// Main menu plugin.  Shows a horizontal bar with two menu items and a logout button.
-// constructor(core, activeRoute)
-//    core        - core object provided by host app
-//    activeRoute - (optional) initially selected route so correct menu item is highlighted
+export default class MainMenu {
+  constructor(core) {
+    this.core = core;
 
-export class MainMenu {
-    constructor(core, activeRoute = "") {
-        this.core = core;
-        this.activeRoute = activeRoute;
-        this._mountMenu();
+    const html = `
+      <div class="top-menu" role="navigation" aria-label="Main menu">
+        <div class="menu-item" data-route="useradmin">Users</div>
+        <div class="menu-item" data-route="ticketadmin">Tickets</div>
+        <div class="menu-item" data-route="ticket_stats">Stats</div>
+        <div class="spacer"></div>
+        <button class="logout-btn" data-route="logout" title="Logout">Logout</button>
+      </div>
+    `;
+
+    const css = `
+      .top-menu {
+        display: flex;
+        align-items: center;
+        background-color: var(--top_menu-bg-color);
+        color: var(--top-menu-text-color);
+        padding: 0.5rem 1rem;
+        font-family: sans-serif;
+        box-sizing: border-box;
+        width: 100%;
+      }
+
+      .menu-item {
+        margin-right: 1rem;
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        user-select: none;
+        border-radius: 4px;
+        transition: background-color 0.2s;
+      }
+
+      .menu-item:hover {
+        background-color: rgba(255,255,255,0.15);
+      }
+
+      .menu-item.selected {
+        background-color: var(--button-bg-color);
+        color: var(--button-text-color);
+      }
+
+      .spacer {
+        flex-grow: 1;
+      }
+
+      .logout-btn {
+        background-color: var(--button-bg-color);
+        color: var(--button-text-color);
+        border: none;
+        padding: 0.4rem 0.8rem;
+        cursor: pointer;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .logout-btn:hover {
+        opacity: 0.85;
+      }
+    `;
+
+    // Mount the widget in the nav_bar area and keep a reference to the shadow root.
+    this.root = core.mount("nav_bar", html, css);
+
+    // Save references for later use
+    this.menuItems = this.root.querySelectorAll('.menu-item');
+    this.logoutBtn = this.root.querySelector('.logout-btn');
+
+    // Attach event listeners to menu items
+    this.menuItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        const target = e.currentTarget;
+        const route = target.getAttribute('data-route');
+        this.selectItem(target);
+        this.core.route(route);
+      });
+    });
+
+    // Logout button listener
+    this.logoutBtn.addEventListener('click', () => {
+      this.clearSelection();
+      this.core.route('logout');
+    });
+  }
+
+  // Mark the given element as selected and clear others
+  selectItem(element) {
+    this.menuItems.forEach(item => item.classList.remove('selected'));
+    if (element) {
+      element.classList.add('selected');
     }
+  }
 
-    _mountMenu() {
-        const html = `
-            <div class="menu-wrapper">
-                <ul class="menu-items">
-                    <li class="menu-item" data-route="useradmin">Users</li>
-                    <li class="menu-item" data-route="ticketadmin">Tickets</li>
-                </ul>
-                <button class="logout-btn" data-route="logout">Logout</button>
-            </div>
-        `;
-
-        const css = `
-            .menu-wrapper {
-                display: flex;
-                align-items: center;
-                width: 100%;
-                background: #333;
-                color: #fff;
-                font-family: sans-serif;
-                box-sizing: border-box;
-            }
-            .menu-items {
-                list-style: none;
-                margin: 0;
-                padding: 0;
-                display: flex;
-            }
-            .menu-item {
-                padding: 10px 15px;
-                cursor: pointer;
-                user-select: none;
-            }
-            .menu-item:hover {
-                background: #444;
-            }
-            .menu-item.active {
-                background: #555;
-            }
-            .logout-btn {
-                margin-left: auto;
-                padding: 8px 14px;
-                cursor: pointer;
-                background: #880000;
-                color: #fff;
-                border: none;
-                border-radius: 2px;
-                user-select: none;
-            }
-            .logout-btn:hover {
-                background: #aa0000;
-            }
-        `;
-
-        // Mount into the nav_bar area and keep reference to shadowRoot
-        this.shadowRoot = this.core.mount("nav_bar", html, css);
-
-        // Setup listeners for menu items
-        const items = Array.from(this.shadowRoot.querySelectorAll(".menu-item"));
-        items.forEach(item => {
-            item.addEventListener("click", () => {
-                const route = item.getAttribute("data-route");
-                this._highlight(route);
-                this.core.route(route);
-            });
-        });
-
-        // Logout button
-        const logoutBtn = this.shadowRoot.querySelector(".logout-btn");
-        if (logoutBtn) {
-            logoutBtn.addEventListener("click", () => {
-                this.core.route("logout");
-            });
-        }
-
-        // Initial highlight if provided
-        if (this.activeRoute) {
-            this._highlight(this.activeRoute);
-        }
-    }
-
-    _highlight(route) {
-        // Remove existing highlights
-        const items = this.shadowRoot.querySelectorAll(".menu-item");
-        items.forEach(el => el.classList.remove("active"));
-
-        // Add to the item that matches the route
-        const activeEl = this.shadowRoot.querySelector(`.menu-item[data-route="${route}"]`);
-        if (activeEl) {
-            activeEl.classList.add("active");
-        }
-    }
+  // Clear all selections (used when logging out)
+  clearSelection() {
+    this.menuItems.forEach(item => item.classList.remove('selected'));
+  }
 }

@@ -4,10 +4,13 @@ export class SQLDb {
 	constructor(baseurl) {
 		this.baseurl = baseurl
 	}
-	async run(query) {
+	async run(query,interpolation_params) {
 		const url = new URL(this.baseurl, window.location.origin);
 		url.searchParams.append('query', query);
 		url.searchParams.append('token', this.token);
+		if (interpolation_params) {
+			url.searchParams.append('params',JSON.stringify(interpolation_params))
+		}
 		const res = await fetch(url, {
 			method: 'GET',
 			headers: {
@@ -15,6 +18,7 @@ export class SQLDb {
 			}
 		})
 		var res_obj = await res.json()
+		if (res_obj.length == 0) return null
 		//console.log(res_obj)
 		// convert to key-value
 		var ret = []
@@ -124,6 +128,35 @@ export class WebCogsCore {
         }
 	}
 
+    /** Load multiple plugins from a manifest JSON file.
+     * @param {string} manifest_path - Path to the manifest JSON file.
+     */
+    async loadPlugins(app_basedir,manifest_path) {
+        try {
+            const res = await fetch(manifest_path);
+            if (!res.ok) {
+                throw new Error(`Failed to load manifest: ${res.statusText}`);
+            }
+
+            const manifest = await res.json();
+            const { wd, targets } = manifest;
+
+            if (Array.isArray(targets)) {
+                for (const target of targets) {
+                    const { file, name } = target;
+					// XXX absolute path will only work if manifest is read from the same root as the web server
+					const fullpath = `${app_basedir}/${wd}${file}`
+					console.log(fullpath)
+                    await this.loadPlugin(fullpath, name);
+                }
+            } else {
+                console.error("Manifest targets should be an array.");
+            }
+        } catch (error) {
+            console.error('Error loading plugins from manifest:', error);
+        }
+    }
+	
 	/** Init a previously loaded plugin. Constructs the class; passes any custom arguments on to the class constructor.
 	 * @param {string} name - the name given to the plugin at load time
 	 * @return {object} - the created instance, or null on failure

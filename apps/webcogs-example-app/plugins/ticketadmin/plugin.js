@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -24,17 +24,37 @@ core.route has the following parameters:
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
-- async function db.run(sql_statement) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects. Each object represents a record, with keys representing the column names and values the record values.
+- async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
 ## available core.mount locations
 
-- main
-- nav_bar
-- side_bar
+- modal_dialog - modal dialog that displays as an overlay
+- main - main area of screen
+- nav_bar - navigation bar for main menu
+- side_bar - side bar for submenus
 
 ## core.route routes
 
 A route is a string that indicates a widget plugin name.
+
+## Style guide
+
+Widgets should always display a title.
+
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+
+## CSS definitions
+
+:root {
+  --text-color: #000;
+  --main-bg-color: #fff;
+  --nav_bar-bg-color: #eee;
+  --top_menu-bg-color: #222;
+  --top-menu-text-color: #fff;
+  --button-bg-color: #aaf;
+  --button-text-color: #006;
+}
 
 
 ## SQL table definitions
@@ -58,138 +78,156 @@ CREATE TABLE Ticket (
 );
 
 @webcogs_user_prompt
-Write a plugin that shows a list of all tickets in the database, ordered by date. The ticket text should be shown in a large area.  Each ticket row should also show the username that issued the ticket, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID.
+Write a plugin that shows two lists: one of all open tickets (response_text=NULL), and one of all responded tickets. Both should be descendingly ordered by date. The ticket text should be shown in a large area. When response_text is not NULL, it should also be shown in a large area. Each ticket row should also show the username that issued the ticket, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID. Do not use jquery.
 
 @webcogs_end_prompt_section*/
-// TicketListPlugin.js
-// A plugin that lists all tickets ordered by date.  Clicking on a ticket opens the ticket overview,
-// clicking on the username opens the user overview.
-
-export default class TicketListPlugin {
+export class TicketListsPlugin {
     constructor(core) {
         this.core = core;
-        this.shadowRoot = null;
-        // Immediately start rendering
+        this.root = null;
+        this.openTickets = [];
+        this.respondedTickets = [];
         this.init();
     }
 
     async init() {
-        // Load ticket data
-        const tickets = await this.fetchTickets();
-        // Build HTML
-        const html = this.buildHTML(tickets);
-        const css = this.buildCSS();
-        // Mount widget
-        this.shadowRoot = this.core.mount("main", html, css);
-        // Attach event listeners
-        this.attachListeners();
+        await this.loadData();
+        this.render();
     }
 
-    async fetchTickets() {
-        const sql = `
-            SELECT 
-                Ticket.id              AS ticket_id,
-                Ticket.text            AS ticket_text,
-                Ticket.entry_date      AS entry_date,
-                User.id                AS user_id,
-                User.username          AS username
-            FROM Ticket
-            JOIN User ON User.id = Ticket.user
-            ORDER BY Ticket.entry_date DESC
+    async loadData() {
+        // Fetch open tickets (response_text IS NULL)
+        this.openTickets = await this.core.db.run(
+            `SELECT Ticket.id            AS ticket_id,
+                    Ticket.text          AS ticket_text,
+                    Ticket.entry_date    AS entry_date,
+                    Ticket.response_date AS response_date,
+                    Ticket.response_text AS response_text,
+                    User.id              AS user_id,
+                    User.username        AS username
+             FROM   Ticket
+             JOIN   User ON Ticket.user = User.id
+             WHERE  Ticket.response_text IS NULL
+             ORDER  BY Ticket.entry_date DESC;`
+        ) || [];
+
+        // Fetch responded tickets (response_text IS NOT NULL)
+        this.respondedTickets = await this.core.db.run(
+            `SELECT Ticket.id            AS ticket_id,
+                    Ticket.text          AS ticket_text,
+                    Ticket.entry_date    AS entry_date,
+                    Ticket.response_date AS response_date,
+                    Ticket.response_text AS response_text,
+                    User.id              AS user_id,
+                    User.username        AS username
+             FROM   Ticket
+             JOIN   User ON Ticket.user = User.id
+             WHERE  Ticket.response_text IS NOT NULL
+             ORDER  BY Ticket.entry_date DESC;`
+        ) || [];
+    }
+
+    render() {
+        const html = `
+            <div class="tickets-widget">
+                <h2>Open tickets</h2>
+                <div class="ticket-list" id="open-ticket-list">
+                    ${this.openTickets.map(t => this.ticketHtml(t, false)).join("")}
+                </div>
+                <h2>Responded tickets</h2>
+                <div class="ticket-list" id="responded-ticket-list">
+                    ${this.respondedTickets.map(t => this.ticketHtml(t, true)).join("")}
+                </div>
+            </div>
         `;
-        try {
-            const rows = await this.core.db.run(sql);
-            return rows;
-        } catch (e) {
-            console.error("Failed to fetch tickets", e);
-            return [];
-        }
+
+        const css = `
+            .tickets-widget {
+                color: var(--text-color);
+                background: var(--main-bg-color);
+                padding: 1rem;
+                box-sizing: border-box;
+                height: 100%;
+                overflow-y: auto;
+            }
+            .tickets-widget h2 {
+                margin-top: 1.5rem;
+                margin-bottom: 0.5rem;
+            }
+            .ticket-list {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            .ticket-item {
+                padding: 0.75rem;
+                border-bottom: 1px solid #ddd;
+                cursor: pointer;
+            }
+            .ticket-item:last-child {
+                border-bottom: none;
+            }
+            .ticket-info {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 0.5rem;
+                font-weight: bold;
+            }
+            .username {
+                color: blue;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+            .ticket-text, .response-text {
+                background: #f9f9f9;
+                padding: 0.5rem;
+                white-space: pre-wrap;
+                border-radius: 4px;
+                margin-bottom: 0.5rem;
+            }
+            .response-label {
+                font-style: italic;
+                margin-bottom: 0.25rem;
+            }
+        `;
+
+        // Mount widget in main area
+        this.root = this.core.mount('main', html, css);
+
+        // After mounting, attach event listeners
+        this.addEventListeners();
     }
 
-    buildHTML(tickets) {
-        let items = "";
-        for (const t of tickets) {
-            items += `
-                <li class="ticket-item" data-ticket-id="${t.ticket_id}">
-                    <div class="ticket-text">${this.escapeHTML(t.ticket_text)}</div>
-                    <div class="ticket-meta">
-                        <span class="ticket-user" data-user-id="${t.user_id}">${this.escapeHTML(t.username)}</span>
-                        <span class="ticket-date">${this.formatDate(t.entry_date)}</span>
-                    </div>
-                </li>
-            `;
-        }
-
+    ticketHtml(ticket, hasResponse) {
         return `
-            <div class="ticket-list-container">
-                <ul class="ticket-list">${items}</ul>
+            <div class="ticket-item" data-ticket-id="${ticket.ticket_id}">
+                <div class="ticket-info">
+                    <span class="username" data-user-id="${ticket.user_id}">${this.escapeHtml(ticket.username)}</span>
+                    <span class="date">${this.escapeHtml(ticket.entry_date)}</span>
+                </div>
+                <pre class="ticket-text">${this.escapeHtml(ticket.ticket_text)}</pre>
+                ${hasResponse ? `<div class="response-label">Response:</div><pre class="response-text">${this.escapeHtml(ticket.response_text)}</pre>` : ``}
             </div>
         `;
     }
 
-    buildCSS() {
-        return `
-            .ticket-list {
-                list-style: none;
-                padding: 0;
-                margin: 0;
-            }
+    addEventListeners() {
+        if (!this.root) return;
 
-            .ticket-item {
-                border-bottom: 1px solid #ddd;
-                padding: 12px;
-                cursor: pointer;
-            }
-
-            .ticket-item:hover {
-                background: #fafafa;
-            }
-
-            .ticket-text {
-                font-size: 1.1em;
-                margin-bottom: 8px;
-                white-space: pre-wrap;
-            }
-
-            .ticket-meta {
-                font-size: 0.9em;
-                color: #555;
-            }
-
-            .ticket-user {
-                color: #007acc;
-                cursor: pointer;
-                margin-right: 8px;
-            }
-
-            .ticket-user:hover {
-                text-decoration: underline;
-            }
-        `;
-    }
-
-    attachListeners() {
-        if (!this.shadowRoot) return;
-        const list = this.shadowRoot.querySelector(".ticket-list");
-        if (!list) return;
-
-        list.addEventListener("click", (event) => {
-            const target = event.target;
-            if (target.closest && target.closest('.ticket-user')) {
-                // Username clicked
-                const userEl = target.closest('.ticket-user');
-                const userId = parseInt(userEl.getAttribute('data-user-id'), 10);
+        // Delegate clicks for ticket items and usernames
+        this.root.addEventListener('click', (event) => {
+            const userTarget = event.target.closest('.username');
+            if (userTarget) {
+                event.stopPropagation();
+                const userId = parseInt(userTarget.getAttribute('data-user-id'), 10);
                 if (!isNaN(userId)) {
                     this.core.route('user_overview', userId);
                 }
-                // Prevent click from bubbling to li
-                event.stopPropagation();
                 return;
             }
 
-            const itemEl = target.closest('.ticket-item');
-            if (itemEl) {
-                const ticketId = parseInt(itemEl.getAttribute('data-ticket-id'), 10);
+            const ticketTarget = event.target.closest('.ticket-item');
+            if (ticketTarget) {
+                const ticketId = parseInt(ticketTarget.getAttribute('data-ticket-id'), 10);
                 if (!isNaN(ticketId)) {
                     this.core.route('ticket_overview', ticketId);
                 }
@@ -197,23 +235,14 @@ export default class TicketListPlugin {
         });
     }
 
-    escapeHTML(str) {
-        return String(str).replace(/[&<>\"']/g, function (s) {
-            const entityMap = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            };
-            return entityMap[s];
-        });
-    }
-
-    formatDate(dateStr) {
-        // Basic ISO date handling; keeps format if parsing fails
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return dateStr;
-        return date.toLocaleDateString();
+    // Helper to safely escape HTML characters
+    escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 }

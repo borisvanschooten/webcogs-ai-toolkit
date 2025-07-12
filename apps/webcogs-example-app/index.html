@@ -2,10 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Example app</title>
+    <title>WebCogs example app</title>
+    <link rel="stylesheet" href="basestyles.css"></head>
     <style>
         body {
             margin: 0;
+            padding: 0;
             font-family: Arial, sans-serif;
             background: #fafafa;
         }
@@ -28,7 +30,7 @@
             width: 240px;
             min-width: 180px;
             padding: 20px 16px;
-            background: #f0f0f0;
+            background: #eee;
             border-right: 1px solid #ddd;
             min-height: 400px;
         }
@@ -80,12 +82,12 @@
     <div id="nav_bar" class="menu">
         Menu Area
     </div>
-    <div id="side_bar" class="layout">
-        <div class="config-area">
+    <div class="layout">
+        <div id="side_bar" class="config-area">
             Side Bar
         </div>
         <div id="main" class="main-content">
-            Main Content Area
+            Please select a page from the top menu.
         </div>
     </div>
 <script>
@@ -105,6 +107,7 @@ function router(route, ...params) {
                 db.setToken(token)
                 document.getElementById('overlay').style.display = 'none';
                 core.initPlugin("mainmenu")
+                core.initPlugin("sidebar_tickets")
                 //console.log(token)
             } else {
                 core.initPlugin("login","Failed to login (note: demo login is 'admin' / 'admin')")
@@ -116,8 +119,10 @@ function router(route, ...params) {
         core.initPlugin("login")
         document.getElementById('overlay').style.display = 'block';
     } else {
-       document.getElementById('overlay').style.display = 'none';
-       core.initPlugin(route, ...params)
+        document.getElementById('overlay').style.display = 'none';
+        // keep updating the sidebar
+        core.initPlugin("sidebar_tickets")
+        core.initPlugin(route, ...params)
     }
 }
 function mounter(location, html_code, css_code) {
@@ -127,12 +132,7 @@ function mounter(location, html_code, css_code) {
 var db = new SQLDb("db/run")
 var core = new WebCogsCore(router,mounter,db)
 async function init() {
-    await core.loadPlugin("../apps/webcogs-example-app/plugins/login/plugin.js","login")
-    await core.loadPlugin("../apps/webcogs-example-app/plugins/useradmin/plugin.js","useradmin")
-    await core.loadPlugin("../apps/webcogs-example-app/plugins/ticketadmin/plugin.js","ticketadmin")
-    await core.loadPlugin("../apps/webcogs-example-app/plugins/mainmenu/plugin.js","mainmenu")
-    await core.loadPlugin("../apps/webcogs-example-app/plugins/user_overview/plugin.js","user_overview")
-    await core.loadPlugin("../apps/webcogs-example-app/plugins/ticket_overview/plugin.js","ticket_overview")
+    await core.loadPlugins(window.location.pathname.replace(/[^/]*$/, ''),"manifest.json")
     document.getElementById('overlay').style.display = 'block';
     core.initPlugin("login")
 }

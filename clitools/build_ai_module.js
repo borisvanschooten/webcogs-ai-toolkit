@@ -58,60 +58,6 @@ function generatePromptsFromManifest(manifest, baseDir = '.', targetBaseDir = ".
 }
 
 
-// -----------------------------------------------------------------------------
-// Main build script
-
-if (process.argv.length < 5) {
-    console.error('Usage: buildcog  <command>  <build target>  <prompt manifest json file>.  Command is one of: diff, build, build-changed.');
-    process.exit(1);
-}
-
-const command = process.argv[2]
-const buildTarget = process.argv[3];
-const manifestPath = process.argv[4];
-
-let manifest;
-try {
-    const data = fs.readFileSync(manifestPath, 'utf8');
-    manifest = JSON.parse(data);
-} catch (err) {
-    console.error('Failed to read or parse manifest file:', err.message);
-    process.exit(1);
-}
-
-var baseDir = "."
-const targetBaseDir = manifest.wd ? path.resolve(baseDir, manifest.wd) : baseDir;
-
-var prompts = generatePromptsFromManifest(manifest, baseDir, targetBaseDir)
-
-//console.log(prompts)
-
-
-var client = new OpenAI.OpenAI({apiKey: secrets.openai_apikey})
-
-const tools = [
-	{
-		"type": "function",
-		"function": {
-			"name": "create_plugin",
-			"description": "Create a Javascript class for a plugin. It should be specified in full, do not omit any code.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"source_code": {
-						"type": "string",
-						"description": "The source code of the class",
-					},
-				},
-				"required": [
-					"source_code"
-				],
-				"additionalProperties": false
-			},
-			"strict": true
-		}
-	},
-];
 
 function getPromptSpec(i) {
     var prompt = "/*@webcogs_system_prompt\n" + prompts.system_prompt
@@ -145,11 +91,17 @@ async function build(i,updateOnly) {
         const new_prompt = getPromptSpec(i);
         const target = path.resolve(targetBaseDir, manifest.targets[i].file);
         const old_prompt = getOldPrompt(target)
-        if (new_prompt == old_prompt) return;
+        if (new_prompt == old_prompt) {
+            console.log(`Skipping ${manifest.targets[i].name}, no changes to prompt.`)
+            return;
+        }
     }
+    console.log(`Building ${manifest.targets[i].name}...`)
     function create_plugin(args) {
-        const target = path.resolve(targetBaseDir, manifest.targets[i].file);
+        const target = path.resolve(targetBaseDir, manifest.targets[i].file)
         var code = getPromptSpec(i) + args.source_code
+        // Ensure the directory exists
+        fs.mkdirSync(path.dirname(target), { recursive: true })
         fs.writeFileSync(target, code, 'utf8')
     }
     var ai_functions = {
@@ -164,7 +116,7 @@ async function build(i,updateOnly) {
             "content": prompts.user_prompts[i].text,
         }
     ]
-    var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,manifest.model ? manifest.model : "o3",5,null,2000)
+    var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,manifest.model ? manifest.model : "o3",2,null,2000)
     //console.log(output)
     //console.log(messages)
 }
@@ -208,5 +160,63 @@ async function runCommand() {
         }
     }
 }
+
+// -----------------------------------------------------------------------------
+// Main build script
+
+if (process.argv.length < 5) {
+    console.error('Usage: buildcog  <command>  <build target>  <prompt manifest json file>.  Command is one of: diff, build, build-changed.');
+    process.exit(1);
+}
+
+const command = process.argv[2]
+const buildTarget = process.argv[3];
+const manifestPath = process.argv[4];
+//var baseDir = "."
+var baseDir = path.dirname(manifestPath);
+
+let manifest;
+try {
+    const data = fs.readFileSync(manifestPath, 'utf8');
+    manifest = JSON.parse(data);
+} catch (err) {
+    console.error('Failed to read or parse manifest file:', err.message);
+    process.exit(1);
+}
+
+const targetBaseDir = manifest.wd ? path.resolve(baseDir, manifest.wd) : baseDir;
+
+var prompts = generatePromptsFromManifest(manifest, baseDir, targetBaseDir)
+
+//console.log(prompts)
+
+
+var client = new OpenAI.OpenAI({apiKey: secrets.openai_apikey})
+
+const tools = [
+	{
+		"type": "function",
+		"function": {
+			"name": "create_plugin",
+			"description": "Create a Javascript class for a plugin. It should be specified in full, do not omit any code.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"source_code": {
+						"type": "string",
+						"description": "The source code of the class",
+					},
+				},
+				"required": [
+					"source_code"
+				],
+				"additionalProperties": false
+			},
+			"strict": true
+		}
+	},
+];
+
+
 
 runCommand()
