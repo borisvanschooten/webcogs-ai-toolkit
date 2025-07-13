@@ -14,7 +14,7 @@
 	"targets": [
 		{
 			"name": "login",
-			"prompts": [ { "file": "login/plugin_docs.md" } ],
+			"prompts": [ { "text": "Write a plugin that shows a login screen as a modal dialog. It has two fields: username and password, and a button 'login'. When login is pressed, route to 'logged_in' with username and password as parameters. The constructor takes an extra string parameter 'error'. If defined, the error should be shown under the login button." } ],
 			"file": "login/plugin.js"
 		},
 		{
@@ -34,7 +34,7 @@
 		},
 		{
 			"name": "sidebar_tickets",
-			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all open tickets, sorted by date. Open tickets are tickets for which response = NULL.  If you click on a ticket, route to ticket_overview." } ],
+			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all tickets with status=open, sorted by date.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID." } ],
 			"file": "sidebar_tickets/plugin.js"
 		},
 		{
@@ -49,7 +49,7 @@
 		},
 		{
 			"name": "ticket_response",
-			"prompts": [ { "text": "Show the ticket fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor.  If the response text is null, show a textarea in which a response can be entered, with a submit button to submit it.  If the response text is not null, show it in a large area.  If a response is submitted, use SQL UPDATE to set the response text and date, and route to ticket_response." } ],
+			"prompts": [ { "text": "Show the fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor. All responses to this ticket should be shown below the ticket. Below that, show a form for creating a new response, with the response text in a textarea, and the response status in a multiple choice field.  Statuses can be: open, in_progress, fixed, not_fixed. Add a submit button to submit the response. If a response is submitted, use SQL UPDATE to set the response text, status, and date.  Also set the ticket status. Then route to ticket_response." } ],
 			"file": "ticket_response/plugin.js"
 		},
 		{

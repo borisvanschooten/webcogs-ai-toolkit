@@ -59,190 +59,239 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 
 ## SQL table definitions
 
+
+-- User role is one of: user, provider, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- A ticket can have any number of responses
+-- Each response sets the status or text fields, or both
+CREATE TABLE Response {
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    status TEXT,
+    text TEXT
+}
+
 @webcogs_user_prompt
-Write a plugin that shows two lists: one of all open tickets (response_text=NULL), and one of all responded tickets. Both should be descendingly ordered by date. The ticket text should be shown in a large area. When response_text is not NULL, it should also be shown in a large area. Each ticket row should also show the username that issued the ticket, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID. Do not use jquery.
+Write a plugin that shows four lists, one for each possible value of status: open, in_progress, fixed, not_fixed. Lists should be descendingly ordered by date. The ticket text should be shown in a large area. Each ticket row should also show the username that issued the ticket, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID. Do not use jquery.
 
 @webcogs_end_prompt_section*/
-export class TicketListsPlugin {
-    constructor(core) {
-        this.core = core;
-        this.root = null;
-        this.openTickets = [];
-        this.respondedTickets = [];
-        this.init();
+class TicketBoard {
+  constructor(core) {
+    this.core = core;
+    // Mount the widget in the main area
+    this.root = core.mount('main', this._html(), this._css());
+    // Cache containers for the four lists
+    this.containers = {
+      'open': this.root.querySelector('#list-open'),
+      'in_progress': this.root.querySelector('#list-in-progress'),
+      'fixed': this.root.querySelector('#list-fixed'),
+      'not_fixed': this.root.querySelector('#list-not-fixed')
+    };
+
+    // Start async initialisation
+    this._init();
+  }
+
+  async _init() {
+    const statuses = ['open', 'in_progress', 'fixed', 'not_fixed'];
+    for (const status of statuses) {
+      const rows = await this.core.db.run(
+        `SELECT Ticket.id   AS ticket_id,
+                Ticket.text AS ticket_text,
+                Ticket.time AS ticket_time,
+                User.id     AS user_id,
+                User.username AS username
+         FROM Ticket
+         JOIN User ON Ticket.user = User.id
+         WHERE Ticket.status = ?
+         ORDER BY Ticket.time DESC`,
+        [status]
+      );
+      this._renderList(status, rows);
+    }
+  }
+
+  _renderList(status, rows) {
+    const container = this.containers[status];
+    container.innerHTML = '';
+
+    // Only attach one listener per container
+    if (!container._clickBound) {
+      container.addEventListener('click', (e) => {
+        // If user name clicked
+        const userEl = e.target.closest('.ticket-user');
+        if (userEl) {
+          const userId = parseInt(userEl.dataset.userId, 10);
+          this.core.route('user_overview', userId);
+          e.stopPropagation();
+          return;
+        }
+        // Otherwise row click
+        const rowEl = e.target.closest('.ticket-row');
+        if (rowEl) {
+          const ticketId = parseInt(rowEl.dataset.ticketId, 10);
+          this.core.route('ticket_overview', ticketId);
+        }
+      });
+      container._clickBound = true;
     }
 
-    async init() {
-        await this.loadData();
-        this.render();
+    for (const row of rows) {
+      const item = document.createElement('div');
+      item.className = 'ticket-row';
+      item.dataset.ticketId = row.ticket_id;
+
+      const header = document.createElement('div');
+      header.className = 'ticket-header';
+
+      const userSpan = document.createElement('span');
+      userSpan.className = 'ticket-user';
+      userSpan.textContent = row.username;
+      userSpan.dataset.userId = row.user_id;
+      header.appendChild(userSpan);
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'ticket-date';
+      const dateObj = new Date(row.ticket_time);
+      dateSpan.textContent = dateObj.toLocaleString();
+      header.appendChild(dateSpan);
+
+      item.appendChild(header);
+
+      const textDiv = document.createElement('div');
+      textDiv.className = 'ticket-text';
+      textDiv.textContent = row.ticket_text;
+      item.appendChild(textDiv);
+
+      container.appendChild(item);
     }
+  }
 
-    async loadData() {
-        // Fetch open tickets (response_text IS NULL)
-        this.openTickets = await this.core.db.run(
-            `SELECT Ticket.id            AS ticket_id,
-                    Ticket.text          AS ticket_text,
-                    Ticket.entry_date    AS entry_date,
-                    Ticket.response_date AS response_date,
-                    Ticket.response_text AS response_text,
-                    User.id              AS user_id,
-                    User.username        AS username
-             FROM   Ticket
-             JOIN   User ON Ticket.user = User.id
-             WHERE  Ticket.response_text IS NULL
-             ORDER  BY Ticket.entry_date DESC;`
-        ) || [];
+  _html() {
+    return `
+      <div class="ticket-board">
+        <h2>Ticket Board</h2>
+        <div class="status-wrapper">
+          <div class="status-column" id="col-open">
+            <h3>Open</h3>
+            <div id="list-open" class="ticket-list"></div>
+          </div>
 
-        // Fetch responded tickets (response_text IS NOT NULL)
-        this.respondedTickets = await this.core.db.run(
-            `SELECT Ticket.id            AS ticket_id,
-                    Ticket.text          AS ticket_text,
-                    Ticket.entry_date    AS entry_date,
-                    Ticket.response_date AS response_date,
-                    Ticket.response_text AS response_text,
-                    User.id              AS user_id,
-                    User.username        AS username
-             FROM   Ticket
-             JOIN   User ON Ticket.user = User.id
-             WHERE  Ticket.response_text IS NOT NULL
-             ORDER  BY Ticket.entry_date DESC;`
-        ) || [];
-    }
+          <div class="status-column" id="col-in-progress">
+            <h3>In Progress</h3>
+            <div id="list-in-progress" class="ticket-list"></div>
+          </div>
 
-    render() {
-        const html = `
-            <div class="tickets-widget">
-                <h2>Open tickets</h2>
-                <div class="ticket-list" id="open-ticket-list">
-                    ${this.openTickets.map(t => this.ticketHtml(t, false)).join("")}
-                </div>
-                <h2>Responded tickets</h2>
-                <div class="ticket-list" id="responded-ticket-list">
-                    ${this.respondedTickets.map(t => this.ticketHtml(t, true)).join("")}
-                </div>
-            </div>
-        `;
+          <div class="status-column" id="col-fixed">
+            <h3>Fixed</h3>
+            <div id="list-fixed" class="ticket-list"></div>
+          </div>
 
-        const css = `
-            .tickets-widget {
-                color: var(--text-color);
-                background: var(--main-bg-color);
-                padding: 1rem;
-                box-sizing: border-box;
-                height: 100%;
-                overflow-y: auto;
-            }
-            .tickets-widget h2 {
-                margin-top: 1.5rem;
-                margin-bottom: 0.5rem;
-            }
-            .ticket-list {
-                border: 1px solid #ccc;
-                border-radius: 4px;
-            }
-            .ticket-item {
-                padding: 0.75rem;
-                border-bottom: 1px solid #ddd;
-                cursor: pointer;
-            }
-            .ticket-item:last-child {
-                border-bottom: none;
-            }
-            .ticket-info {
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 0.5rem;
-                font-weight: bold;
-            }
-            .username {
-                color: blue;
-                text-decoration: underline;
-                cursor: pointer;
-            }
-            .ticket-text, .response-text {
-                background: #f9f9f9;
-                padding: 0.5rem;
-                white-space: pre-wrap;
-                border-radius: 4px;
-                margin-bottom: 0.5rem;
-            }
-            .response-label {
-                font-style: italic;
-                margin-bottom: 0.25rem;
-            }
-        `;
+          <div class="status-column" id="col-not-fixed">
+            <h3>Not Fixed</h3>
+            <div id="list-not-fixed" class="ticket-list"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
-        // Mount widget in main area
-        this.root = this.core.mount('main', html, css);
+  _css() {
+    return `
+      .ticket-board {
+        font-family: sans-serif;
+        color: var(--text-color);
+        background: var(--main-bg-color);
+        padding: 10px;
+      }
 
-        // After mounting, attach event listeners
-        this.addEventListeners();
-    }
+      .ticket-board h2 {
+        text-align: center;
+        margin: 5px 0 15px 0;
+      }
 
-    ticketHtml(ticket, hasResponse) {
-        return `
-            <div class="ticket-item" data-ticket-id="${ticket.ticket_id}">
-                <div class="ticket-info">
-                    <span class="username" data-user-id="${ticket.user_id}">${this.escapeHtml(ticket.username)}</span>
-                    <span class="date">${this.escapeHtml(ticket.entry_date)}</span>
-                </div>
-                <pre class="ticket-text">${this.escapeHtml(ticket.ticket_text)}</pre>
-                ${hasResponse ? `<div class="response-label">Response:</div><pre class="response-text">${this.escapeHtml(ticket.response_text)}</pre>` : ``}
-            </div>
-        `;
-    }
+      .status-wrapper {
+        display: flex;
+        gap: 1%;
+      }
 
-    addEventListeners() {
-        if (!this.root) return;
+      .status-column {
+        flex: 1 1 0;
+        background: #f9f9f9;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
 
-        // Delegate clicks for ticket items and usernames
-        this.root.addEventListener('click', (event) => {
-            const userTarget = event.target.closest('.username');
-            if (userTarget) {
-                event.stopPropagation();
-                const userId = parseInt(userTarget.getAttribute('data-user-id'), 10);
-                if (!isNaN(userId)) {
-                    this.core.route('user_overview', userId);
-                }
-                return;
-            }
+      .status-column h3 {
+        margin: 0;
+        padding: 6px;
+        background: var(--nav_bar-bg-color);
+        text-align: center;
+      }
 
-            const ticketTarget = event.target.closest('.ticket-item');
-            if (ticketTarget) {
-                const ticketId = parseInt(ticketTarget.getAttribute('data-ticket-id'), 10);
-                if (!isNaN(ticketId)) {
-                    this.core.route('ticket_overview', ticketId);
-                }
-            }
-        });
-    }
+      .ticket-list {
+        overflow-y: auto;
+        flex: 1 1 auto;
+        max-height: 70vh;
+      }
 
-    // Helper to safely escape HTML characters
-    escapeHtml(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    }
+      .ticket-row {
+        padding: 6px;
+        border-bottom: 1px solid #ddd;
+        cursor: pointer;
+      }
+
+      .ticket-row:hover {
+        background: #eef;
+      }
+
+      .ticket-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+
+      .ticket-user {
+        font-weight: bold;
+        color: blue;
+        cursor: pointer;
+      }
+
+      .ticket-date {
+        font-size: 0.8em;
+        color: #666;
+      }
+
+      .ticket-text {
+        white-space: pre-line;
+      }
+    `;
+  }
 }
+
+export default TicketBoard;

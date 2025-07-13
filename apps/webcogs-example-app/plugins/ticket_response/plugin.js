@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -59,172 +59,214 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 
 ## SQL table definitions
 
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- A ticket can have any number of responses
+-- Each response sets the status or text fields, or both
+CREATE TABLE Response (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    status TEXT,
+    text TEXT
+)
+
 @webcogs_user_prompt
-Show the ticket fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor.  If the response text is null, show a textarea in which a response can be entered, with a submit button to submit it.  If the response text is not null, show it in a large area.  If a response is submitted, use SQL UPDATE to set the response text and date, and route to ticket_response.
+Show the fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor. All responses to this ticket should be shown below the ticket. Below that, show a form for creating a new response, with the response text in a textarea, and the response status in a multiple choice field.  Statuses can be: open, in_progress, fixed, not_fixed. Add a submit button to submit the response. If a response is submitted, use SQL UPDATE to set the response text, status, and date, and route to ticket_response.
 @webcogs_end_prompt_section*/
-export class TicketDetail {
+class TicketViewer {
     constructor(core, ticketId) {
         this.core = core;
         this.ticketId = ticketId;
-        this.shadow = null; // will hold the shadow root returned by core.mount
-
-        // kick-off async initialisation
+        // render UI
         this.init();
     }
 
     async init() {
-        // fetch ticket data
-        const rows = await this.core.db.run("SELECT * FROM Ticket WHERE id=?", [this.ticketId]);
-        if (!rows || rows.length === 0) {
-            // Ticket not found – show simple message
-            this.renderNotFound();
+        // Load ticket data
+        const ticketRows = await this.core.db.run("SELECT Ticket.*, User.username FROM Ticket JOIN User ON Ticket.user = User.id WHERE Ticket.id = ?", [this.ticketId]);
+        if (ticketRows.length === 0) {
+            this.mountEmpty("Ticket not found");
             return;
         }
-        this.ticket = rows[0];
-        this.render();
+        this.ticket = ticketRows[0];
+        // Load responses
+        this.responses = await this.core.db.run("SELECT * FROM Response WHERE ticket_id = ? ORDER BY time", [this.ticketId]);
+        // Now render the widget
+        this.mount();
+        // Populate dynamic parts
+        this.populateStaticFields();
+        this.renderResponses();
+        this.attachListeners();
     }
 
-    renderNotFound() {
-        const html = `
-            <h2>Ticket not found</h2>
-            <p>No ticket exists with ID ${this.ticketId}.</p>
-        `;
-        const css = `
-            h2 { color: var(--text-color); }
-            p  { color: var(--text-color); }
-        `;
-        if (!this.shadow) {
-            this.shadow = this.core.mount('main', html, css);
-        } else {
-            this.shadow.innerHTML = html;
-        }
+    mountEmpty(message) {
+        const html = `<div class="ticket-viewer">
+            <h2>${message}</h2>
+        </div>`;
+        this.root = this.core.mount('main', html, ``);
     }
 
-    render() {
-        const t = this.ticket;
-        const hasResponse = t.response_text !== null && t.response_text !== undefined;
-
+    mount() {
         const html = `
-            <div class="ticket-container">
-                <h2>Ticket #${t.id}</h2>
-
-                <div class="ticket-field"><label>ID:</label> ${t.id}</div>
-                <div class="ticket-field"><label>User:</label> ${t.user}</div>
-                <div class="ticket-field"><label>Entry date:</label> ${t.entry_date}</div>
-                ${hasResponse ? `<div class="ticket-field"><label>Response date:</label> ${t.response_date}</div>` : ''}
-
-                <div class="ticket-field">
-                    <label>Ticket text:</label>
-                    <div class="ticket-text">${this.escapeHTML(t.text)}</div>
-                </div>
-
-                ${hasResponse ? `
-                    <div class="ticket-field">
-                        <label>Response text:</label>
-                        <div class="response-text">${this.escapeHTML(t.response_text)}</div>
-                    </div>
-                ` : `
-                    <div class="ticket-field">
-                        <label>Enter response:</label>
-                        <textarea id="responseInput" rows="10" placeholder="Type your response here..."></textarea>
-                        <button id="submitResponse">Submit Response</button>
-                    </div>
-                `}
+        <div class="ticket-viewer">
+            <h2>Ticket #${this.ticketId}</h2>
+            <div class="field-row"><span class="field-label">User:</span> <span id="tv-username"></span></div>
+            <div class="field-row"><span class="field-label">Current Status:</span> <span id="tv-status"></span></div>
+            <div class="field-row field-text-area">
+                <label for="tv-text">Ticket Text:</label><br>
+                <textarea id="tv-text" readonly></textarea>
             </div>
-        `;
+            <h3>Responses</h3>
+            <div id="tv-responses"></div>
+            <h3>Add Response</h3>
+            <form id="tv-response-form">
+                <div class="field-row">
+                    <label for="tv-response-text">Response Text:</label><br>
+                    <textarea id="tv-response-text" rows="5" style="width:100%"></textarea>
+                </div>
+                <div class="field-row">
+                    <label for="tv-response-status">Response Status:</label>
+                    <select id="tv-response-status">
+                        <option value="open">open</option>
+                        <option value="in_progress">in_progress</option>
+                        <option value="fixed">fixed</option>
+                        <option value="not_fixed">not_fixed</option>
+                    </select>
+                </div>
+                <button type="submit" id="tv-submit-btn">Submit Response</button>
+                <div id="tv-error-msg" class="error-msg"></div>
+            </form>
+        </div>`;
 
         const css = `
-            .ticket-container {
-                padding: 20px;
-                color: var(--text-color);
-                background: var(--main-bg-color);
-                font-family: sans-serif;
-            }
-            h2 { margin-top: 0; }
-            .ticket-field { margin-bottom: 15px; }
-            .ticket-field label { font-weight: bold; display:block; margin-bottom: 4px; }
-            .ticket-text,
-            .response-text,
-            textarea {
-                width: 100%;
-                min-height: 150px;
-                padding: 10px;
-                box-sizing: border-box;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                background: #fdfdfd;
-                white-space: pre-wrap;
-            }
-            button {
-                background: var(--button-bg-color);
-                color: var(--button-text-color);
-                border: none;
-                padding: 10px 20px;
-                cursor: pointer;
-                border-radius: 4px;
-            }
-            button:hover { opacity: 0.9; }
-        `;
-
-        if (!this.shadow) {
-            this.shadow = this.core.mount('main', html, css);
-        } else {
-            this.shadow.innerHTML = html;
+        .ticket-viewer {
+            color: var(--text-color);
+            background: var(--main-bg-color);
+            padding: 1em;
+            box-sizing: border-box;
         }
-
-        // attach event listener if needed
-        if (!hasResponse) {
-            const btn = this.shadow.getElementById('submitResponse');
-            if (btn) {
-                btn.addEventListener('click', () => this.submitResponse());
-            }
+        .ticket-viewer h2, .ticket-viewer h3 {
+            margin-top: 0.5em;
+            margin-bottom: 0.5em;
         }
+        .field-row {
+            margin: 0.5em 0;
+        }
+        .field-label {
+            font-weight: bold;
+        }
+        #tv-text {
+            width: 100%;
+            min-height: 120px;
+        }
+        #tv-response-text {
+            min-height: 100px;
+        }
+        #tv-submit-btn {
+            margin-top: 0.5em;
+            background: var(--button-bg-color);
+            color: var(--button-text-color);
+            border: none;
+            padding: 0.5em 1em;
+            cursor: pointer;
+        }
+        .response-entry {
+            border: 1px solid #ccc;
+            padding: 0.5em;
+            margin-bottom: 0.5em;
+        }
+        .response-entry .response-meta {
+            font-size: 0.9em;
+            color: #555;
+            margin-bottom: 0.3em;
+        }
+        .error-msg {
+            color: red;
+            margin-top: 0.3em;
+        }`;
+
+        this.root = this.core.mount('main', html, css);
     }
 
-    async submitResponse() {
-        const input = this.shadow.getElementById('responseInput');
-        if (!input) return;
-        const responseText = input.value.trim();
-        if (responseText.length === 0) {
-            alert('Response cannot be empty.');
+    populateStaticFields() {
+        if (!this.root) return;
+        this.root.getElementById('tv-username').textContent = this.ticket.username;
+        this.root.getElementById('tv-status').textContent = this.ticket.status;
+        this.root.getElementById('tv-text').value = this.ticket.text;
+    }
+
+    renderResponses() {
+        const container = this.root.getElementById('tv-responses');
+        container.innerHTML = '';
+        if (this.responses.length === 0) {
+            container.textContent = 'No responses yet.';
             return;
         }
-        // Update the ticket in DB
-        await this.core.db.run(
-            'UPDATE Ticket SET response_text = ?, response_date = date(\'now\') WHERE id = ?',
-            [responseText, this.ticketId]
-        );
-
-        // Route to "ticket_response" (passing the ticket ID as second parameter)
-        this.core.route('ticket_response', this.ticketId);
+        this.responses.forEach(resp => {
+            const div = document.createElement('div');
+            div.className = 'response-entry';
+            const meta = document.createElement('div');
+            meta.className = 'response-meta';
+            const dateStr = new Date(resp.time).toLocaleString();
+            meta.textContent = `[${dateStr}] Status: ${resp.status || '—'}`;
+            const body = document.createElement('div');
+            body.textContent = resp.text || '';
+            div.appendChild(meta);
+            div.appendChild(body);
+            container.appendChild(div);
+        });
     }
 
-    // Utility to escape HTML special characters to avoid element injection
-    escapeHTML(str) {
-        if (str === null || str === undefined) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
+    attachListeners() {
+        const form = this.root.getElementById('tv-response-form');
+        form.addEventListener('submit', (e) => this.submitResponse(e));
+    }
+
+    async submitResponse(event) {
+        event.preventDefault();
+        const errorDiv = this.root.getElementById('tv-error-msg');
+        errorDiv.textContent = '';
+        const text = this.root.getElementById('tv-response-text').value.trim();
+        const status = this.root.getElementById('tv-response-status').value;
+        if (text === '') {
+            errorDiv.textContent = 'Response text cannot be empty.';
+            return;
+        }
+        const now = new Date().toISOString();
+        try {
+            // Insert new response
+            await this.core.db.run("INSERT INTO Response (ticket_id, time, status, text) VALUES (?, ?, ?, ?)", [this.ticketId, now, status, text]);
+            // Update ticket status
+            await this.core.db.run("UPDATE Ticket SET status = ? WHERE id = ?", [status, this.ticketId]);
+            // Route to ticket_response
+            this.core.route('ticket_response', this.ticketId);
+        } catch (err) {
+            errorDiv.textContent = 'Error saving response.';
+            console.error(err);
+        }
     }
 }
+
+export default TicketViewer;

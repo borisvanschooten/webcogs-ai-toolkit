@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -24,7 +24,7 @@ core.route has the following parameters:
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
-- async function db.run(sql_statement) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects. Each object represents a record, with keys representing the column names and values the record values.
+- async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
 ## available core.mount locations
 
@@ -38,6 +38,8 @@ core.db is a SQLite compatible database object. It has the following functions:
 A route is a string that indicates a widget plugin name.
 
 ## Style guide
+
+Widgets should always display a title.
 
 Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
 
@@ -57,191 +59,193 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 
 ## SQL table definitions
 
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- A ticket can have any number of responses
+-- Each response sets the status or text fields, or both
+CREATE TABLE Response (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    status TEXT,
+    text TEXT
+)
+
 @webcogs_user_prompt
-Write a plugin that shows a single user in a table with two columns, keys left and values right. The user ID is passed as a custom parameter to the constructor.  Below the user table should be the list of tickets submitted by the user. WHen you click on a ticket, route to ticket_overview with the ticket ID as custom parameter.
+Write a plugin that shows a single user in a table with two columns, keys left and values right. The user ID is passed as a custom parameter to the constructor.  Below the user table should be the list of tickets submitted by the user. When you click on a ticket, route to ticket_overview with the ticket ID as custom parameter.
 
 
 @webcogs_end_prompt_section*/
-export default class UserDetailsPlugin {
-    /**
-     * Display the details of one user and their tickets.
-     * @param {Object} core - The core API object supplied by the host app.
-     * @param {number} userId - The id of the user whose details must be shown.
-     */
+// UserDetailsPlugin.js
+// This plugin displays a single user's information and their submitted tickets.
+// Clicking on a ticket routes to the ticket_overview plugin with the ticket id.
+
+export class UserDetailsPlugin {
     constructor(core, userId) {
         this.core = core;
         this.userId = userId;
+        // mount the widget in the main area
+        this.shadowRoot = this.core.mount('main', this._initialHTML(), this._css());
+        // grab container elements
+        this.userTableBody = this.shadowRoot.getElementById('user-table-body');
+        this.ticketsContainer = this.shadowRoot.getElementById('tickets-container');
+        // load data from DB
+        this._loadData();
+    }
 
-        // Mount basic skeleton immediately
-        this.shadowRoot = this.core.mount(
-            'main',
-            `
-            <div class="user-details-wrapper">
-                <h2 id="user-title">User #${userId}</h2>
-                <table id="user-table"></table>
+    /* -------------------------------------------------- */
+    /*  HTML & CSS                                        */
+    /* -------------------------------------------------- */
+
+    _initialHTML() {
+        return `
+            <div class="user-details-widget">
+                <h2>User Details</h2>
+                <table class="user-table">
+                    <tbody id="user-table-body">
+                        <!-- user rows inserted dynamically -->
+                    </tbody>
+                </table>
+
                 <h3>User Tickets</h3>
-                <ul id="ticket-list"></ul>
+                <div id="tickets-container" class="tickets-container">
+                    <!-- ticket list inserted dynamically -->
+                </div>
             </div>
-            `,
-            `
-            .user-details-wrapper {
+        `;
+    }
+
+    _css() {
+        return `
+            .user-details-widget {
                 color: var(--text-color);
                 background: var(--main-bg-color);
-                padding: 1rem;
-                font-family: sans-serif;
+                padding: 16px;
+                box-sizing: border-box;
             }
-
-            h2, h3 {
-                margin-top: 0;
-            }
-
-            #user-table {
+            .user-table {
                 width: 100%;
                 border-collapse: collapse;
-                margin-bottom: 1.5rem;
+                margin-bottom: 24px;
             }
-
-            #user-table td {
-                padding: 0.5rem;
+            .user-table td {
                 border: 1px solid #ccc;
+                padding: 8px;
             }
-
-            #user-table td.key {
+            .user-table td.key {
                 font-weight: bold;
                 width: 30%;
-                background: #f8f8f8;
+                background: #f7f7f7;
             }
-
-            #ticket-list {
+            .tickets-container ul {
                 list-style: none;
-                padding: 0;
                 margin: 0;
+                padding: 0;
             }
-
-            #ticket-list li {
+            .tickets-container li {
+                padding: 10px;
                 border: 1px solid #ccc;
-                padding: 0.5rem;
-                margin-bottom: 0.5rem;
+                margin-bottom: 6px;
                 cursor: pointer;
                 background: var(--button-bg-color);
                 color: var(--button-text-color);
-                transition: opacity 0.2s ease-in-out;
             }
-
-            #ticket-list li:hover {
-                opacity: 0.8;
+            .tickets-container li:hover {
+                background: #88f;
             }
-            `
-        );
-
-        // Kick off data loading
-        this.load();
+            .no-data {
+                font-style: italic;
+                color: #666;
+            }
+        `;
     }
 
-    async load() {
-        try {
-            // Fetch user data
-            const userRows = await this.core.db.run(
-                `SELECT * FROM User WHERE id = ${Number(this.userId)} LIMIT 1;`
-            );
-            if (!userRows || userRows.length === 0) {
-                this.showError('User not found.');
-                return;
-            }
-            const user = userRows[0];
-            this.populateUserTable(user);
+    /* -------------------------------------------------- */
+    /*  Data loading                                      */
+    /* -------------------------------------------------- */
 
-            // Fetch tickets
-            const ticketRows = await this.core.db.run(
-                `SELECT * FROM Ticket WHERE user = ${Number(this.userId)} ORDER BY entry_date DESC;`
-            );
-            this.populateTickets(ticketRows);
-        } catch (e) {
-            this.showError('Error loading data.');
-            /* eslint-disable no-console */
-            console.error(e);
-        }
+    async _loadData() {
+        await this._loadUser();
+        await this._loadTickets();
     }
 
-    populateUserTable(user) {
-        const table = this.shadowRoot.getElementById('user-table');
-        table.innerHTML = '';
-        const keys = ['id', 'username', 'email', 'first_name', 'surname', 'birth_date'];
-        keys.forEach((key) => {
-            const tr = document.createElement('tr');
-            const tdKey = document.createElement('td');
-            tdKey.textContent = this.formatKey(key);
-            tdKey.className = 'key';
-            const tdVal = document.createElement('td');
-            tdVal.textContent = user[key];
-            tr.appendChild(tdKey);
-            tr.appendChild(tdVal);
-            table.appendChild(tr);
-        });
-    }
-
-    populateTickets(tickets) {
-        const list = this.shadowRoot.getElementById('ticket-list');
-        list.innerHTML = '';
-        if (!tickets || tickets.length === 0) {
-            const none = document.createElement('li');
-            none.textContent = 'No tickets submitted.';
-            none.style.cursor = 'default';
-            list.appendChild(none);
+    // Fetch user record and populate table
+    async _loadUser() {
+        const rows = await this.core.db.run('SELECT * FROM User WHERE id=?', [this.userId]);
+        if (!rows || rows.length === 0) {
+            this.userTableBody.innerHTML = `<tr><td class="no-data" colspan="2">User not found</td></tr>`;
             return;
         }
-        tickets.forEach((ticket) => {
-            const li = document.createElement('li');
-            li.textContent = `#${ticket.id} - ${this.truncate(ticket.text, 50)}`;
-            li.dataset.ticketId = ticket.id;
+        const user = rows[0];
+        // iterate keys and build rows
+        const keys = ['id','username','email','first_name','surname','organization','role','status'];
+        const htmlRows = keys.map(key => {
+            return `<tr>
+                        <td class="key">${this._capitalize(key.replace('_',' '))}</td>
+                        <td>${user[key]}</td>
+                    </tr>`;
+        }).join('');
+        this.userTableBody.innerHTML = htmlRows;
+    }
+
+    // Fetch tickets list and display under user table
+    async _loadTickets() {
+        const tickets = await this.core.db.run('SELECT * FROM Ticket WHERE user=? ORDER BY time DESC', [this.userId]);
+        if (!tickets || tickets.length === 0) {
+            this.ticketsContainer.innerHTML = `<p class="no-data">No tickets submitted.</p>`;
+            return;
+        }
+        const listHTML = `<ul>
+            ${tickets.map(t => `
+                <li data-ticket-id="${t.id}">
+                    #${t.id} - ${this._escapeHTML(t.text).slice(0,50)}${t.text.length>50?'...':''} [${t.status}]
+                    <br><small>${t.time}</small>
+                </li>`).join('')}
+        </ul>`;
+        this.ticketsContainer.innerHTML = listHTML;
+        // attach click handlers
+        const listItems = this.ticketsContainer.querySelectorAll('li[data-ticket-id]');
+        listItems.forEach(li => {
             li.addEventListener('click', () => {
-                this.core.route('ticket_overview', ticket.id);
+                const ticketId = parseInt(li.getAttribute('data-ticket-id'), 10);
+                this.core.route('ticket_overview', ticketId);
             });
-            list.appendChild(li);
         });
     }
 
-    formatKey(key) {
-        // Convert snake_case to Title Case e.g. first_name -> First Name
-        return key
-            .split('_')
-            .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-            .join(' ');
+    /* -------------------------------------------------- */
+    /*  Helpers                                           */
+    /* -------------------------------------------------- */
+
+    _capitalize(str) {
+        return str.charAt(0).toUpperCase() + str.slice(1);
     }
 
-    truncate(text, len) {
-        if (!text) return '';
-        if (text.length <= len) return text;
-        return text.slice(0, len - 3) + '...';
-    }
-
-    showError(msg) {
-        const wrapper = this.shadowRoot.querySelector('.user-details-wrapper');
-        wrapper.innerHTML = `<p style="color:red;">${msg}</p>`;
-    }
-
-    // Optional destroy method if the host app wants to clean up
-    destroy() {
-        if (this.shadowRoot && this.shadowRoot.host && this.shadowRoot.host.parentNode) {
-            this.shadowRoot.host.parentNode.removeChild(this.shadowRoot.host);
-        }
+    // Basic HTML escaping
+    _escapeHTML(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 }

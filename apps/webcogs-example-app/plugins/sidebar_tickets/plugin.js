@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -24,7 +24,7 @@ core.route has the following parameters:
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
-- async function db.run(sql_statement) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects. Each object represents a record, with keys representing the column names and values the record values.
+- async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
 ## available core.mount locations
 
@@ -37,128 +37,149 @@ core.db is a SQLite compatible database object. It has the following functions:
 
 A route is a string that indicates a widget plugin name.
 
+## Style guide
+
+Widgets should always display a title.
+
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+
+## CSS definitions
+
+:root {
+  --text-color: #000;
+  --main-bg-color: #fff;
+  --nav_bar-bg-color: #eee;
+  --top_menu-bg-color: #222;
+  --top-menu-text-color: #fff;
+  --button-bg-color: #aaf;
+  --button-text-color: #006;
+}
+
 
 ## SQL table definitions
 
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
 
-@webcogs_user_prompt
-Create a widget that shows in the sidebar, showing a vertical list of all open tickets, sorted by date. Open tickets are tickets for which response = NULL.  If you click on a ticket, route to ticket_overview.
-@webcogs_end_prompt_section*/
-// Plugin: OpenTicketsSidebar
-// Shows a list with all open tickets (response_date IS NULL) in the sidebar.
-// Clicking a ticket routes to "ticket_overview" with the ticket id as parameter.
+-- A ticket can have any number of responses
+-- Each response sets the status or text fields, or both
+CREATE TABLE Response (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    status TEXT,
+    text TEXT
+)
 
-class OpenTicketsSidebar {
+@webcogs_user_prompt
+Create a widget that shows in the sidebar, showing a vertical list of all tickets with status=open, sorted by date.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.
+@webcogs_end_prompt_section*/
+export class OpenTicketsSidebar {
     constructor(core) {
         this.core = core;
-        // Mount the widget in the sidebar
-        this.shadowRoot = core.mount(
+        // Mount initial widget in the side bar
+        this.root = core.mount(
             'side_bar',
             `
-            <div id="ticket-container">
-                <p>Loading tickets...</p>
+            <div class="ticket-widget">
+                <h3 class="title">Open Tickets</h3>
+                <div class="content"><p>Loading…</p></div>
             </div>
             `,
             `
-            #ticket-container {
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-                padding: 8px;
+            .ticket-widget {
+                color: var(--text-color);
+                background-color: var(--main-bg-color);
+                padding: 10px;
                 font-family: sans-serif;
-                font-size: 14px;
-                color: #333;
+            }
+            .ticket-widget .title {
+                margin: 0 0 8px 0;
+                font-size: 16px;
             }
             .ticket-item {
-                padding: 6px 8px;
-                border-radius: 4px;
-                border: 1px solid #e0e0e0;
                 cursor: pointer;
-                background: #fafafa;
-                transition: background 0.15s ease-in-out;
+                padding: 6px 4px;
+                border-bottom: 1px solid #ccc;
             }
             .ticket-item:hover {
-                background: #f0f0f0;
+                background-color: #f0f0f0;
             }
-            .empty-message {
-                color: #777;
+            .empty {
                 font-style: italic;
             }
             `
         );
 
-        this.containerEl = this.shadowRoot.getElementById('ticket-container');
-
-        // Populate with current open tickets
-        this.refresh();
+        // Load data
+        this.loadTickets();
     }
 
-    async refresh() {
+    async loadTickets() {
         try {
-            const openTickets = await this.core.db.run(`
-                SELECT id, text, entry_date
-                FROM Ticket
-                WHERE response_date IS NULL
-                ORDER BY entry_date ASC;
-            `);
-            this.renderList(openTickets);
-        } catch (err) {
-            console.error('Error fetching tickets:', err);
-            this.containerEl.innerHTML = '<p class="empty-message">Error loading tickets.</p>';
-        }
-    }
+            // Query DB for open tickets, newest first
+            const tickets = await this.core.db.run(
+                "SELECT id, text, time FROM Ticket WHERE status=? ORDER BY time DESC",
+                ["open"]
+            );
 
-    renderList(tickets) {
-        // Clear previous content
-        this.containerEl.innerHTML = '';
+            const content = this.root.querySelector('.content');
+            // Clear current content
+            content.innerHTML = '';
 
-        if (!tickets || tickets.length === 0) {
-            this.containerEl.innerHTML = '<p class="empty-message">No open tickets.</p>';
-            return;
-        }
+            if (!tickets || tickets.length === 0) {
+                content.innerHTML = '<p class="empty">No open tickets</p>';
+                return;
+            }
 
-        tickets.forEach(ticket => {
-            const item = document.createElement('div');
-            item.className = 'ticket-item';
+            // Build list
+            const ul = document.createElement('ul');
+            ul.style.listStyle = 'none';
+            ul.style.padding = '0';
+            ul.style.margin = '0';
 
-            // Build a concise label: date + first 50 chars of the ticket text
-            const dateStr = new Date(ticket.entry_date).toLocaleDateString();
-            const snippet = ticket.text.length > 50 ? `${ticket.text.slice(0, 47)}...` : ticket.text;
-            item.textContent = `${dateStr} — ${snippet}`;
+            tickets.forEach(t => {
+                const li = document.createElement('li');
+                li.className = 'ticket-item';
+                // Show id and a snippet of text (first 30 chars)
+                let snippet = t.text;
+                if (snippet.length > 30) snippet = snippet.slice(0, 30) + '…';
+                li.textContent = `#${t.id} – ${snippet}`;
 
-            // Register click handler that routes to ticket_overview with ticket id
-            item.addEventListener('click', () => {
-                this.core.route('ticket_overview', ticket.id);
+                // Attach click handler
+                li.addEventListener('click', () => {
+                    this.core.route('ticket_overview', t.id);
+                });
+
+                ul.appendChild(li);
             });
 
-            this.containerEl.appendChild(item);
-        });
-    }
-
-    // Optional cleanup method if the core supports destroying plugins
-    destroy() {
-        if (this.shadowRoot && this.shadowRoot.host && this.shadowRoot.host.remove) {
-            this.shadowRoot.host.remove();
+            content.appendChild(ul);
+        } catch (err) {
+            console.error('Error loading tickets', err);
+            const content = this.root.querySelector('.content');
+            content.innerHTML = '<p class="empty">Error loading tickets</p>';
         }
     }
 }
-
-// Export the plugin class
-export { OpenTicketsSidebar };

@@ -24,7 +24,7 @@ export class SQLDb {
 			this.lastError = "Invalid access"
 			throw new Error("Invalid access")
 		}
-		if (res_obj.length == 0) return null
+		if (res_obj.length == 0) return []
 		//console.log(res_obj)
 		// convert to key-value
 		var ret = []

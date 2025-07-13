@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -24,7 +24,7 @@ core.route has the following parameters:
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
-- async function db.run(sql_statement) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects. Each object represents a record, with keys representing the column names and values the record values.
+- async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
 ## available core.mount locations
 
@@ -59,173 +59,185 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 
 ## SQL table definitions
 
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- A ticket can have any number of responses
+-- Each response sets the status or text fields, or both
+CREATE TABLE Response (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    status TEXT,
+    text TEXT
+)
+
 @webcogs_user_prompt
-Write a plugin that shows a particular ticket in the database. All ticket fields except user ID should be shown in a table. The ticket text should be shown in a large area.  The user who issued the ticket should be shown in a table below the ticket. The ticket ID is passed as a custom parameter to the constructor. If the response_text is NULL, show a button "Respond" which routes to ticket_reponse.
-
+Write a plugin that shows a particular ticket in the database. The ticket ID is passed as a custom parameter to the constructor.  All ticket fields except user ID should be shown in a table.  The user who issued the ticket should be shown be shown in the table as well.  The ticket text should be shown in a large area.  All responses to this ticket should be shown below the ticket.  Show a button "Respond" below the responses which routes to ticket_response. 
 @webcogs_end_prompt_section*/
-// Ticket viewer plugin
-// Shows a single ticket together with the user that created it.
-// The constructor receives the ticket id as the 2nd parameter.
+export class TicketViewer {
+  constructor(core, ticketId) {
+    this.core = core;
+    this.ticketId = ticketId;
+    this.init();
+  }
 
-export default class TicketViewer {
-    constructor(core, ticketId) {
-        this.core = core;
-        this.ticketId = ticketId;
-        this.ticket = null;
-        this.user = null;
-        this.shadow = null;
-        this.init();
+  async init() {
+    // Fetch ticket information with user details
+    const ticketRows = await this.core.db.run(
+      `SELECT Ticket.id               AS ticket_id,
+              Ticket.text             AS ticket_text,
+              Ticket.time             AS ticket_time,
+              Ticket.status           AS ticket_status,
+              User.username           AS username,
+              User.email              AS email,
+              User.first_name         AS first_name,
+              User.surname            AS surname,
+              User.organization       AS organization,
+              User.role               AS user_role,
+              User.status             AS user_status
+       FROM   Ticket
+       JOIN   User ON Ticket.user = User.id
+       WHERE  Ticket.id = ?`,
+      [this.ticketId]
+    );
+
+    let html = "";
+
+    if (!ticketRows || ticketRows.length === 0) {
+      html = `<h2>Ticket #${this.ticketId}</h2><p>Ticket not found.</p>`;
+      this.mount(html);
+      return;
     }
 
-    async init() {
-        await this.fetchData();
-        this.render();
+    const t = ticketRows[0];
+
+    // Fetch responses
+    const responses = await this.core.db.run(
+      `SELECT id, time, status, text
+       FROM   Response
+       WHERE  ticket_id = ?
+       ORDER  BY time ASC`,
+      [this.ticketId]
+    );
+
+    html += `
+      <h2>Ticket #${t.ticket_id}</h2>
+      <table class="ticket-info">
+        <tr><th>Ticket ID</th><td>${t.ticket_id}</td></tr>
+        <tr><th>Submitted by</th><td>${t.first_name} ${t.surname} (${t.username})</td></tr>
+        <tr><th>Time</th><td>${t.ticket_time}</td></tr>
+        <tr><th>Status</th><td>${t.ticket_status}</td></tr>
+      </table>
+
+      <h3>Description</h3>
+      <pre class="ticket-text">${this.escapeHtml(t.ticket_text)}</pre>
+
+      <h3>Responses</h3>
+      <div class="responses">
+        ${responses && responses.length > 0 ? responses.map(r => `
+            <div class="response">
+              <div class="response-header">${r.time} – ${r.status || ""}</div>
+              <pre class="response-text">${this.escapeHtml(r.text || "")}</pre>
+            </div>
+        `).join("") : "<p>No responses yet.</p>"}
+      </div>
+
+      <button id="respond-button">Respond</button>
+    `;
+
+    const css = `
+      h2 {
+        color: var(--text-color);
+      }
+      .ticket-info {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 1em;
+      }
+      .ticket-info th {
+        text-align: left;
+        background: var(--nav_bar-bg-color);
+        padding: 4px;
+        color: var(--text-color);
+      }
+      .ticket-info td {
+        padding: 4px;
+      }
+      .ticket-text {
+        background: var(--main-bg-color);
+        border: 1px solid #ccc;
+        padding: 8px;
+        min-height: 100px;
+        white-space: pre-wrap;
+      }
+      .responses .response {
+        border: 1px solid #ccc;
+        margin-bottom: 8px;
+      }
+      .response-header {
+        background: var(--nav_bar-bg-color);
+        padding: 4px;
+        font-weight: bold;
+      }
+      .response-text {
+        padding: 4px;
+        white-space: pre-wrap;
+      }
+      #respond-button {
+        background: var(--button-bg-color);
+        color: var(--button-text-color);
+        padding: 8px 12px;
+        border: none;
+        cursor: pointer;
+      }
+    `;
+
+    const shadowRoot = this.mount(html, css);
+
+    // Attach event listener to the Respond button
+    const btn = shadowRoot.getElementById("respond-button");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        this.core.route("ticket_response", this.ticketId);
+      });
     }
+  }
 
-    // Fetch the ticket and its user data from the database
-    async fetchData() {
-        // Load ticket
-        const ticketRows = await this.core.db.run(`SELECT id, text, entry_date, response_date, response_text, user FROM Ticket WHERE id = ${this.ticketId} LIMIT 1;`);
-        if (!ticketRows || ticketRows.length === 0) {
-            this.ticket = null;
-            return;
-        }
-        this.ticket = ticketRows[0];
+  // Helper to mount and keep reference to shadow root
+  mount(html, css = "") {
+    this.shadowRoot = this.core.mount("main", html, css);
+    return this.shadowRoot;
+  }
 
-        // Load user that created the ticket
-        const userRows = await this.core.db.run(`SELECT username, email, first_name, surname, birth_date FROM User WHERE id = ${this.ticket.user} LIMIT 1;`);
-        this.user = userRows && userRows.length > 0 ? userRows[0] : null;
-    }
-
-    render() {
-        // Prepare HTML
-        let html = "";
-        if (!this.ticket) {
-            html = `<div class="error">Ticket with ID ${this.ticketId} not found.</div>`;
-        } else {
-            // Ticket info table (excluding user id)
-            html = `
-                <h2>Ticket #${this.ticket.id}</h2>
-                <table class="ticket-info">
-                    <tr><th>ID</th><td>${this.ticket.id}</td></tr>
-                    <tr><th>Entry date</th><td>${this.ticket.entry_date}</td></tr>
-                    <tr><th>Response date</th><td>${this.ticket.response_date || "-"}</td></tr>
-                    <tr><th>Response text</th><td>${this.ticket.response_text || "-"}</td></tr>
-                </table>
-
-                <h3>Description</h3>
-                <div class="ticket-text">${this.escapeHTML(this.ticket.text)}</div>
-            `;
-
-            // Respond button when no response yet
-            if (!this.ticket.response_text) {
-                html += `<button id="respond-btn" class="respond-btn">Respond</button>`;
-            }
-
-            // User info table
-            if (this.user) {
-                html += `
-                    <h3>User who created the ticket</h3>
-                    <table class="user-info">
-                        <tr><th>Username</th><td>${this.user.username}</td></tr>
-                        <tr><th>First name</th><td>${this.user.first_name}</td></tr>
-                        <tr><th>Surname</th><td>${this.user.surname}</td></tr>
-                        <tr><th>Email</th><td>${this.user.email}</td></tr>
-                        <tr><th>Birth date</th><td>${this.user.birth_date}</td></tr>
-                    </table>
-                `;
-            }
-        }
-
-        const css = `
-            :host {
-                color: var(--text-color);
-                background: var(--main-bg-color);
-                display: block;
-                padding: 1rem;
-                font-family: sans-serif;
-            }
-            h2, h3 { margin: 0.5rem 0; }
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin-bottom: 1rem;
-            }
-            th {
-                text-align: left;
-                padding: 0.5rem;
-                background: #ddd;
-            }
-            td {
-                padding: 0.5rem;
-                border-bottom: 1px solid #ccc;
-            }
-            .ticket-text {
-                white-space: pre-wrap;
-                border: 1px solid #ccc;
-                min-height: 120px;
-                padding: 0.75rem;
-                background: #f9f9f9;
-                margin-bottom: 1rem;
-            }
-            .respond-btn {
-                background: var(--button-bg-color);
-                color: var(--button-text-color);
-                padding: 0.5rem 1rem;
-                border: none;
-                cursor: pointer;
-                font-size: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            .respond-btn:hover {
-                opacity: 0.9;
-            }
-            .error {
-                color: red;
-                font-weight: bold;
-            }
-        `;
-
-        // Mount in main area
-        this.shadow = this.core.mount('main', html, css);
-
-        // Wire button event
-        if (this.shadow) {
-            const respondBtn = this.shadow.getElementById('respond-btn');
-            if (respondBtn) {
-                respondBtn.addEventListener('click', () => {
-                    this.core.route('ticket_response', this.ticketId);
-                });
-            }
-        }
-    }
-
-    // Simple HTML escaper to prevent HTML injection in ticket text
-    escapeHTML(str) {
-        if (!str) return "";
-        return str
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-    }
+  // Basic HTML escaping
+  escapeHtml(str) {
+    if (str == null) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
 }

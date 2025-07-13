@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -59,202 +59,188 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 
 ## SQL table definitions
 
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization TEXT NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	user INTEGER NOT NULL,
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- A ticket can have any number of responses
+-- Each response sets the status or text fields, or both
+CREATE TABLE Response (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    status TEXT,
+    text TEXT
+)
+
 @webcogs_user_prompt
-Show a bar chart that shows the number of submitted tickets per day over the last 30 days.
+Show a bar chart that shows the number of submitted tickets per day over the last 30 days. Show dates in the form mm-dd at the x axis, and ticks on the y axis.
 @webcogs_end_prompt_section*/
-// TicketsBarChartPlugin.js
-// A plugin that displays a bar chart with the amount of submitted tickets per
-// day during the last 30 days.
+export default class TicketsPerDayChart {
+  constructor(core) {
+    this.core = core;
+    // Mount the widget in the main area
+    this.shadow = core.mount(
+      'main',
+      `
+        <div id="wrapper">
+          <h2>Tickets per Day (Last 30 Days)</h2>
+          <canvas id="chart" width="800" height="400"></canvas>
+        </div>
+      `,
+      `
+        #wrapper {
+          padding: 16px;
+          color: var(--text-color);
+          background-color: var(--main-bg-color);
+          font-family: Arial, sans-serif;
+        }
+        canvas {
+          border: 1px solid #ccc;
+          background-color: #fafafa;
+          width: 100%;
+          max-width: 100%;
+        }
+      `
+    );
 
-class TicketsBarChartPlugin {
-    constructor(core) {
-        this.core = core;
-        this.init();
+    this.canvas = this.shadow.getElementById('chart');
+    this.ctx = this.canvas.getContext('2d');
+
+    // kick-off async initialisation
+    this.init();
+  }
+
+  // Fetch data and draw the chart
+  async init() {
+    try {
+      // Build list of date strings for the last 30 days (ISO yyyy-mm-dd)
+      const today = new Date();
+      const dateStrings = [];
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(today.getDate() - i);
+        const iso = d.toISOString().slice(0, 10); // yyyy-mm-dd
+        dateStrings.push(iso);
+      }
+
+      const startDate = dateStrings[0];
+      const endDate = dateStrings[dateStrings.length - 1];
+
+      // Query database for counts per day
+      const rows = await this.core.db.run(
+        `SELECT date(time) AS day, COUNT(*) AS cnt
+         FROM Ticket
+         WHERE date(time) BETWEEN ? AND ?
+         GROUP BY day`,
+        [startDate, endDate]
+      );
+
+      // Map DB results to a dictionary {day: count}
+      const countsByDay = {};
+      rows.forEach(r => {
+        countsByDay[r.day] = r.cnt;
+      });
+
+      // Build array of counts aligned with dateStrings order
+      const counts = dateStrings.map(d => countsByDay[d] || 0);
+
+      // Draw chart
+      this.drawChart(dateStrings, counts);
+    } catch (err) {
+      console.error('Error initialising TicketsPerDayChart plugin:', err);
+    }
+  }
+
+  // Draw a simple bar chart on the canvas
+  drawChart(dateStrings, counts) {
+    const ctx = this.ctx;
+    const W = this.canvas.width;
+    const H = this.canvas.height;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, W, H);
+
+    // Layout settings
+    const margin = { top: 30, right: 20, bottom: 60, left: 40 };
+    const chartW = W - margin.left - margin.right;
+    const chartH = H - margin.top - margin.bottom;
+
+    // Determine Y axis max (at least 5 so we have ticks)
+    const maxValue = Math.max(...counts, 5);
+    const yTickCount = 5;
+    const yTickStep = Math.ceil(maxValue / yTickCount);
+    const adjustedMax = yTickStep * yTickCount;
+
+    // Bar dimensions
+    const barCount = counts.length;
+    const barWidth = chartW / barCount;
+
+    // Draw bars
+    ctx.fillStyle = '#4a90e2';
+    counts.forEach((val, idx) => {
+      const barHeight = (val / adjustedMax) * chartH;
+      const x = margin.left + idx * barWidth + barWidth * 0.1;
+      const y = margin.top + chartH - barHeight;
+      const bw = barWidth * 0.8;
+      ctx.fillRect(x, y, bw, barHeight);
+    });
+
+    // Axes
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    // Y axis
+    ctx.beginPath();
+    ctx.moveTo(margin.left, margin.top);
+    ctx.lineTo(margin.left, margin.top + chartH);
+    ctx.lineTo(margin.left + chartW, margin.top + chartH);
+    ctx.stroke();
+
+    // Y axis ticks & labels
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    for (let i = 0; i <= yTickCount; i++) {
+      const yValue = i * yTickStep;
+      const y = margin.top + chartH - (yValue / adjustedMax) * chartH;
+      ctx.beginPath();
+      ctx.moveTo(margin.left - 5, y);
+      ctx.lineTo(margin.left, y);
+      ctx.stroke();
+      ctx.fillText(yValue.toString(), margin.left - 7, y);
     }
 
-    /**
-     * Initialise the widget: mount HTML/CSS, then query data and draw the chart.
-     */
-    async init() {
-        const html = `
-            <div class="ticket-chart-widget">
-                <h2>Tickets per Day (Last 30 days)</h2>
-                <canvas id="chartCanvas" width="800" height="400"></canvas>
-            </div>
-        `;
+    // X axis labels (mm-dd)
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
 
-        const css = `
-            .ticket-chart-widget {
-                background-color: var(--main-bg-color);
-                color: var(--text-color);
-                padding: 1rem;
-                box-sizing: border-box;
-                width: 100%;
-            }
-            .ticket-chart-widget h2 {
-                margin: 0 0 1rem 0;
-                font-size: 1.25rem;
-            }
-            canvas {
-                width: 100%;
-                max-width: 100%;
-                border: 1px solid #ccc;
-            }
-        `;
-
-        // Mount the widget in the main area and keep a reference to the shadow root.
-        this.shadowRoot = this.core.mount("main", html, css);
-        this.canvas = this.shadowRoot.getElementById("chartCanvas");
-        this.ctx = this.canvas.getContext("2d");
-
-        // Load data and draw the chart.
-        await this.loadDataAndDraw();
-    }
-
-    /**
-     * Query the database for ticket counts and feed the chart.
-     */
-    async loadDataAndDraw() {
-        // Calculate date range: from 29 days ago (inclusive) to today (inclusive)
-        const today = new Date();
-        const startDate = new Date();
-        startDate.setDate(today.getDate() - 29);
-
-        const toSQLDate = (dateObj) => {
-            return dateObj.toISOString().split("T")[0]; // YYYY-MM-DD
-        };
-
-        const startDateStr = toSQLDate(startDate);
-
-        // Query counts grouped by day ≥ startDate
-        const query = `SELECT entry_date AS date, COUNT(*) AS count
-                       FROM Ticket
-                       WHERE entry_date >= ?
-                       GROUP BY entry_date`;
-        const rows = await this.core.db.run(query, [startDateStr]);
-
-        // Map date -> count for quick lookup
-        const countsMap = {};
-        rows.forEach(r => {
-            countsMap[r.date] = r.count;
-        });
-
-        // Assemble ordered labels & counts (30 values, oldest to newest)
-        this.labels = [];
-        this.counts = [];
-        for (let i = 0; i < 30; i++) {
-            const d = new Date(startDate);
-            d.setDate(startDate.getDate() + i);
-            const label = toSQLDate(d);
-            this.labels.push(label);
-            this.counts.push(countsMap[label] || 0);
-        }
-
-        this.drawChart();
-    }
-
-    /**
-     * Draws a simple bar chart directly on the canvas.
-     */
-    drawChart() {
-        const ctx = this.ctx;
-        const canvas = this.canvas;
-        const w = canvas.width;
-        const h = canvas.height;
-
-        // Clear canvas
-        ctx.clearRect(0, 0, w, h);
-
-        // Chart layout settings
-        const paddingLeft = 50;
-        const paddingBottom = 40;
-        const paddingTop = 20;
-        const paddingRight = 20;
-        const chartWidth = w - paddingLeft - paddingRight;
-        const chartHeight = h - paddingTop - paddingBottom;
-        const barWidth = chartWidth / 30;
-
-        // Determine max count for scaling
-        const maxCount = Math.max(...this.counts, 1);
-
-        // Draw Y axis and horizontal grid lines
-        ctx.strokeStyle = "#000";
-        ctx.beginPath();
-        ctx.moveTo(paddingLeft, paddingTop);
-        ctx.lineTo(paddingLeft, h - paddingBottom);
-        ctx.lineTo(w - paddingRight, h - paddingBottom);
-        ctx.stroke();
-
-        ctx.font = "10px sans-serif";
-        ctx.fillStyle = "#000";
-        ctx.textAlign = "right";
-        ctx.textBaseline = "middle";
-
-        const yStep = Math.ceil(maxCount / 5) || 1;
-        for (let yVal = 0; yVal <= maxCount; yVal += yStep) {
-            const y = h - paddingBottom - (yVal / maxCount) * chartHeight;
-            ctx.fillText(yVal.toString(), paddingLeft - 5, y);
-            // Grid line
-            ctx.strokeStyle = "#ddd";
-            ctx.beginPath();
-            ctx.moveTo(paddingLeft, y);
-            ctx.lineTo(w - paddingRight, y);
-            ctx.stroke();
-        }
-
-        // Draw bars
-        ctx.fillStyle = "steelblue";
-        for (let i = 0; i < 30; i++) {
-            const count = this.counts[i];
-            const barHeight = (count / maxCount) * chartHeight;
-            const x = paddingLeft + i * barWidth + barWidth * 0.1;
-            const y = h - paddingBottom - barHeight;
-            ctx.fillRect(x, y, barWidth * 0.8, barHeight);
-        }
-
-        // Draw X-axis labels (show every 5th day to avoid clutter)
-        ctx.textAlign = "center";
-        ctx.textBaseline = "top";
-        ctx.fillStyle = "#000";
-        for (let i = 0; i < 30; i += 5) {
-            const x = paddingLeft + i * barWidth + barWidth / 2;
-            // show MM-DD for brevity
-            const label = this.labels[i].substring(5);
-            ctx.fillText(label, x, h - paddingBottom + 4);
-        }
-    }
-
-    /**
-     * Optional cleanup if the plugin gets destroyed.
-     */
-    destroy() {
-        if (this.shadowRoot && this.shadowRoot.host) {
-            this.shadowRoot.host.remove();
-        }
-    }
+    dateStrings.forEach((isoDate, idx) => {
+      // Show every 5th label for readability, always show first & last
+      if (idx % 5 !== 0 && idx !== dateStrings.length - 1 && idx !== 0) return;
+      const label = isoDate.slice(5); // mm-dd
+      const x = margin.left + idx * barWidth + barWidth / 2;
+      const y = margin.top + chartH + 5;
+      ctx.fillText(label, x, y);
+    });
+  }
 }
-
-// Export the plugin class (CommonJS & ES module compatibility)
-if (typeof module !== "undefined" && module.exports) {
-    module.exports = TicketsBarChartPlugin;
-}
-
-export default TicketsBarChartPlugin;

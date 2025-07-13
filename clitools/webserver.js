@@ -23,11 +23,11 @@ async function initDB() {
 	db.run(sqlstr);
 
 	sqlstr = 
-  'INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith","1998-05-06");\
-	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee","1978-10-01");\
-  INSERT INTO Ticket VALUES (1,1,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01",NULL,NULL);\
-	INSERT INTO Ticket VALUES (2,1,"The problem with my phone persists, please help.","2025-07-07",NULL,NULL);\
-	INSERT INTO Ticket VALUES (3,2,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03",NULL,NULL);\
+  'INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith","org1","user","verified");\
+	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee","org2","developer","verified");\
+  INSERT INTO Ticket VALUES (1,1,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01 11:10:00","open");\
+	INSERT INTO Ticket VALUES (2,1,"The problem with my phone persists, please help.","2025-07-07 15:30:11","open");\
+	INSERT INTO Ticket VALUES (3,2,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03 13:33:00","open");\
 	'
 	db.run(sqlstr);
 
