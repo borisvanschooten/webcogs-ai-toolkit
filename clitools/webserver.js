@@ -1,7 +1,9 @@
 const express = require('express');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const initSqlJs = require('sql.js');
+const jwt = require('jsonwebtoken');
 
 // initialised asynchronously by initDB
 var db = null;
@@ -33,12 +35,14 @@ async function initDB() {
 	//console.log(JSON.stringify(res,null,4))
 }
 
-var tokenStore = {}
-
 initDB()
 
 const app = express();
+app.use(cookieParser());
 const port = 3000;
+
+// XXX in a real application this should be stored in a separate place
+const JWT_SECRET = "dummy_secret"
 
 const mimeTypes = {
   '.html': 'text/html',
@@ -60,19 +64,27 @@ app.get('/db/run', async (req, res) => {
     return res.status(503).json({ error: 'Database not initialized' });
   }
   const query = req.query.query;
-  const token = req.query.token;
+  const doubleSubmitToken = req.query.token;
+  const jwtToken = req.cookies.webcogs_app_access_token;
+  var jwtPayload = null;
+  try {
+    jwtPayload = jwt.verify(jwtToken, JWT_SECRET);
+  } catch (err) {
+    return res.status(401).json({ error: 'Invalid JWT Token' });
+  }
   var params = [];
   if (typeof req.query.params != "undefined") {
     params = JSON.parse(req.query.params);
-    console.log("Got params: "+req.query.params)
-    console.log(params)
+    //console.log("Got params: "+req.query.params)
+    //console.log(params)
   }
-  if (!query || !token) {
+  if (!query || !doubleSubmitToken || !jwtToken) {
     return res.status(400).json({ error: 'Query and token nust be provided' });
   }
-  if (!Object.values(tokenStore).includes(token)) {
-    return res.status(401).json({ error: 'Invalid token' });
+  if (doubleSubmitToken != jwtPayload.token) {
+    return res.status(401).json({ error: 'Invalid access token' });
   }
+  // TODO check jwtPayload.timestamp expiry
   try {
     const result = db.exec(query,params);
     res.json(result);
@@ -80,7 +92,6 @@ app.get('/db/run', async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
-
 
 
 
@@ -97,9 +108,21 @@ app.get('/auth/login', async (req, res) => {
   try {
     const result = db.exec(`SELECT * FROM Passwords WHERE username = '${username}' AND password = '${password}'`);
     if (result.length > 0) {
-      const token = require('crypto').randomBytes(32).toString('hex');
-      tokenStore[`${username}#${password}`] = token;
-      return res.json({ token });
+      const doubleSubmitToken = require('crypto').randomBytes(32).toString('hex');
+      const payload = {
+        username: username,
+        timestamp: Date.now(),
+        token: doubleSubmitToken
+      };
+      const jwtToken = jwt.sign(payload, JWT_SECRET);
+      res.cookie('webcogs_app_access_token', jwtToken, {
+        httpOnly: true,
+        secure: true,       // HTTPS only
+        sameSite: 'Lax',    // or 'Strict'
+        path: '/db/run',
+        maxAge: 24 * 60 * 60 * 1000 // 1 day
+      });
+      return res.json({ token: doubleSubmitToken });
     } else {
       return res.status(401).json({ error: 'Invalid username or password' });
     }

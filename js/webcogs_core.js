@@ -1,6 +1,7 @@
 export class SQLDb {
 	baseurl;
 	token=null;
+	lastError=null;
 	constructor(baseurl) {
 		this.baseurl = baseurl
 	}
@@ -18,6 +19,11 @@ export class SQLDb {
 			}
 		})
 		var res_obj = await res.json()
+		if (typeof res_obj.error != "undefined") {
+			this.setToken(null)
+			this.lastError = "Invalid access"
+			throw new Error("Invalid access")
+		}
 		if (res_obj.length == 0) return null
 		//console.log(res_obj)
 		// convert to key-value
@@ -35,6 +41,7 @@ export class SQLDb {
 	}
 	setToken(token) {
 		this.token = token
+		this.lastError = null
 	}
 }
 
