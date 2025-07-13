@@ -123,6 +123,10 @@ function router(route, ...params) {
             //alert("Logged in with: "+JSON.stringify(params))
         } else if (route == "logout") {
             db.setToken(null)
+            // clear screen
+            core.unmountShadowDom("main")
+            core.unmountShadowDom("nav_bar")
+            core.unmountShadowDom("side_bar")
             core.initPlugin("login")
             document.getElementById('overlay').style.display = 'block';
         } else {

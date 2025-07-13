@@ -96,6 +96,15 @@ export class WebCogsCore {
         shadow.appendChild(wrapper);
 		return shadow;
     }
+	
+    /** Unmounts the content within the Shadow DOM attached to the given element, effectively clearing it.
+     * @param {string} location - The id of the target HTML element.
+     */
+    unmountShadowDom(location) {
+        const host = document.getElementById(location);
+        if (!host || !host.shadowRoot) return;
+        host.shadowRoot.innerHTML = '';
+    }
 
 	/** Route function for plugins. Default implementation is to invoke the plugin named "location".
 	 * @param {string} location - string that indicates where to route to
