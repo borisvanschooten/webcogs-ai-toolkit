@@ -18,16 +18,23 @@ async function initDB() {
 		username TEXT NOT NULL,\
 		password TEXT NOT NULL\
 	);\
-  INSERT INTO Passwords VALUES ("admin","admin")\
+  INSERT INTO Passwords VALUES ("alan","admin");\
+  INSERT INTO Passwords VALUES ("johnny","admin");\
+  INSERT INTO Passwords VALUES ("wendy","admin");\
   '
 	db.run(sqlstr);
 
 	sqlstr = 
-  'INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith","org1","user","verified");\
-	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee","org2","developer","verified");\
-  INSERT INTO Ticket VALUES (1,1,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01 11:10:00","open");\
-	INSERT INTO Ticket VALUES (2,1,"The problem with my phone persists, please help.","2025-07-07 15:30:11","open");\
-	INSERT INTO Ticket VALUES (3,2,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03 13:33:00","open");\
+  'INSERT INTO Organization VALUES (1,"org1","customer");\
+  INSERT INTO Organization VALUES (2,"org2","vendor");\
+  INSERT INTO Organization VALUES (3,"org3","customer");\
+  INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith",1,"user","verified");\
+	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee",2,"developer","verified");\
+  INSERT INTO user VALUES (3,"wendy","wendy-potters@gmail.com","Wendy","Potters",3,"user","verified");\
+  INSERT INTO Ticket VALUES (1,1,2,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01 11:10:00","open");\
+	INSERT INTO Ticket VALUES (2,1,2,"The problem with my phone persists, please help.","2025-07-07 15:30:11","open");\
+	INSERT INTO Ticket VALUES (3,2,NULL,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03 13:33:00","open");\
+	INSERT INTO Ticket VALUES (4,3,NULL,"My PC is sometimes very slow and gets very hot.","2025-07-03 14:12:56","open");\
 	'
 	db.run(sqlstr);
 
@@ -64,8 +71,9 @@ app.get('/db/run', async (req, res) => {
     return res.status(503).json({ error: 'Database not initialized' });
   }
   const query = req.query.query;
-  const doubleSubmitToken = req.query.token;
+  const token = req.query.token;
   const jwtToken = req.cookies.webcogs_app_access_token;
+  const doubleSubmitToken = req.cookies.webcogs_app_csrf_token;
   var jwtPayload = null;
   try {
     jwtPayload = jwt.verify(jwtToken, JWT_SECRET);
@@ -78,10 +86,10 @@ app.get('/db/run', async (req, res) => {
     //console.log("Got params: "+req.query.params)
     //console.log(params)
   }
-  if (!query || !doubleSubmitToken || !jwtToken) {
+  if (!query || !token || !doubleSubmitToken || !jwtToken) {
     return res.status(400).json({ error: 'Query and token nust be provided' });
   }
-  if (doubleSubmitToken != jwtPayload.token) {
+  if (doubleSubmitToken != token) {
     return res.status(401).json({ error: 'Invalid access token' });
   }
   // TODO check jwtPayload.timestamp expiry
@@ -106,13 +114,15 @@ app.get('/auth/login', async (req, res) => {
   }
 
   try {
-    const result = db.exec(`SELECT * FROM Passwords WHERE username = '${username}' AND password = '${password}'`);
+    const result = db.exec(`SELECT User.id,role FROM Passwords, User WHERE Passwords.username = '${username}' AND password = '${password}' AND User.username=='${username}'`);
     if (result.length > 0) {
       const doubleSubmitToken = require('crypto').randomBytes(32).toString('hex');
+      const user_id = result[0].values[0][0];
+      const user_role = result[0].values[0][1];
       const payload = {
+        user_id: user_id,
         username: username,
         timestamp: Date.now(),
-        token: doubleSubmitToken
       };
       const jwtToken = jwt.sign(payload, JWT_SECRET);
       res.cookie('webcogs_app_access_token', jwtToken, {
@@ -122,13 +132,32 @@ app.get('/auth/login', async (req, res) => {
         path: '/db/run',
         maxAge: 24 * 60 * 60 * 1000 // 1 day
       });
-      return res.json({ token: doubleSubmitToken });
+      res.cookie('webcogs_app_csrf_token', doubleSubmitToken, {
+        secure: true,       // HTTPS only
+        sameSite: 'Lax',    // or 'Strict'
+        path: '/',
+        maxAge: 24 * 60 * 60 * 1000 // 1 day
+      });
+      return res.json({
+         user_id: user_id,
+         user_role: user_role,
+      });
     } else {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/auth/logout', async (req, res) => {
+  res.clearCookie('webcogs_app_access_token', {
+    path: '/db/run',
+  })
+  res.clearCookie('webcogs_app_csrf_token',{
+    path: '/',
+  })
+  return res.json( { result: "Success"} )
 });
 
 app.use((req, res, next) => {

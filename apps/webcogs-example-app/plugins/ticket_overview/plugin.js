@@ -43,6 +43,10 @@ Widgets should always display a title.
 
 Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
 
+## General guidelines
+
+If showing a user's organization, show the organisation name and not the organizaiton ID.
+
 
 ## CSS definitions
 
@@ -60,6 +64,13 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 ## SQL table definitions
 
 
+-- Organization role is one of: customer, vendor
+CREATE TABLE Organization (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL
+);
+
 -- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,7 +78,7 @@ CREATE TABLE User (
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    organization TEXT NOT NULL,
+    organization_id INTEGER NOT NULL,
     role TEXT NOT NULL,
     status TEXT NOT NULL
 );
@@ -76,26 +87,28 @@ CREATE TABLE User (
 -- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	user INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
+    assigned_to INTEGER, -- organization ID which the ticket is assigned to
 	text TEXT NOT NULL,
 	time DATETIME NOT NULL,
     status TEXT NOT NULL
 );
 
 -- A ticket can have any number of responses
--- Each response sets the status or text fields, or both
+-- Each response sets at least one of the fields: assigned_to, status, or text.
 CREATE TABLE Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
     time DATETIME NOT NULL,
+    assigned_to TEXT,
     status TEXT,
     text TEXT
 )
 
 @webcogs_user_prompt
-Write a plugin that shows a particular ticket in the database. The ticket ID is passed as a custom parameter to the constructor.  All ticket fields except user ID should be shown in a table.  The user who issued the ticket should be shown be shown in the table as well.  The ticket text should be shown in a large area.  All responses to this ticket should be shown below the ticket.  Show a button "Respond" below the responses which routes to ticket_response. 
+Write a plugin that shows a particular ticket in the database. The ticket ID is passed as a custom parameter to the constructor.  All ticket fields except user ID should be shown in a table.  The user who issued the ticket should be shown in the table as well, along with their organization.  The ticket text should be shown in a large area.  All responses to this ticket should be shown below the ticket.  Show a button "Respond" below the responses which routes to ticket_response. 
 @webcogs_end_prompt_section*/
-export class TicketViewer {
+class TicketDetailsPlugin {
   constructor(core, ticketId) {
     this.core = core;
     this.ticketId = ticketId;
@@ -103,136 +116,114 @@ export class TicketViewer {
   }
 
   async init() {
-    // Fetch ticket information with user details
-    const ticketRows = await this.core.db.run(
-      `SELECT Ticket.id               AS ticket_id,
-              Ticket.text             AS ticket_text,
-              Ticket.time             AS ticket_time,
-              Ticket.status           AS ticket_status,
-              User.username           AS username,
-              User.email              AS email,
-              User.first_name         AS first_name,
-              User.surname            AS surname,
-              User.organization       AS organization,
-              User.role               AS user_role,
-              User.status             AS user_status
-       FROM   Ticket
-       JOIN   User ON Ticket.user = User.id
-       WHERE  Ticket.id = ?`,
-      [this.ticketId]
-    );
-
-    let html = "";
-
-    if (!ticketRows || ticketRows.length === 0) {
-      html = `<h2>Ticket #${this.ticketId}</h2><p>Ticket not found.</p>`;
-      this.mount(html);
+    // Fetch ticket
+    const ticketArr = await this.core.db.run("SELECT * FROM Ticket WHERE id=?", [this.ticketId]);
+    if (!ticketArr || ticketArr.length === 0) {
+      this.renderNotFound();
       return;
     }
+    const ticket = ticketArr[0];
 
-    const t = ticketRows[0];
+    // Fetch user + organisation of submitter
+    const userArr = await this.core.db.run(
+      `SELECT User.*, Organization.name AS org_name
+         FROM User JOIN Organization ON User.organization_id = Organization.id
+         WHERE User.id=?`,
+      [ticket.submitted_by]
+    );
+    const user = userArr && userArr.length ? userArr[0] : null;
+
+    // Fetch assigned organisation name if any
+    let assignedOrgName = "-";
+    if (ticket.assigned_to !== null && ticket.assigned_to !== undefined) {
+      const orgArr = await this.core.db.run("SELECT name FROM Organization WHERE id=?", [ticket.assigned_to]);
+      if (orgArr && orgArr.length) {
+        assignedOrgName = orgArr[0].name;
+      } else {
+        assignedOrgName = String(ticket.assigned_to);
+      }
+    }
 
     // Fetch responses
     const responses = await this.core.db.run(
-      `SELECT id, time, status, text
-       FROM   Response
-       WHERE  ticket_id = ?
-       ORDER  BY time ASC`,
+      "SELECT * FROM Response WHERE ticket_id=? ORDER BY time ASC",
       [this.ticketId]
     );
 
-    html += `
-      <h2>Ticket #${t.ticket_id}</h2>
-      <table class="ticket-info">
-        <tr><th>Ticket ID</th><td>${t.ticket_id}</td></tr>
-        <tr><th>Submitted by</th><td>${t.first_name} ${t.surname} (${t.username})</td></tr>
-        <tr><th>Time</th><td>${t.ticket_time}</td></tr>
-        <tr><th>Status</th><td>${t.ticket_status}</td></tr>
+    // Build HTML
+    const htmlParts = [];
+    htmlParts.push(`<h2>Ticket #${this.ticketId}</h2>`);
+    htmlParts.push(`
+      <table class="ticket-table">
+        <tr><th>ID</th><td>${ticket.id}</td></tr>
+        <tr><th>Submitted by</th><td>${user ? `${user.first_name} ${user.surname} (@${user.username})` : ticket.submitted_by}</td></tr>
+        <tr><th>User organisation</th><td>${user ? user.org_name : '-'}</td></tr>
+        <tr><th>Assigned to</th><td>${assignedOrgName}</td></tr>
+        <tr><th>Time</th><td>${ticket.time}</td></tr>
+        <tr><th>Status</th><td>${ticket.status}</td></tr>
       </table>
+    `);
 
+    // Ticket text
+    htmlParts.push(`
       <h3>Description</h3>
-      <pre class="ticket-text">${this.escapeHtml(t.ticket_text)}</pre>
+      <div class="ticket-text"><pre>${this.escapeHtml(ticket.text)}</pre></div>
+    `);
 
-      <h3>Responses</h3>
-      <div class="responses">
-        ${responses && responses.length > 0 ? responses.map(r => `
-            <div class="response">
-              <div class="response-header">${r.time} – ${r.status || ""}</div>
-              <pre class="response-text">${this.escapeHtml(r.text || "")}</pre>
-            </div>
-        `).join("") : "<p>No responses yet.</p>"}
-      </div>
+    // Responses
+    htmlParts.push(`<h3>Responses (${responses.length})</h3>`);
+    if (responses.length === 0) {
+      htmlParts.push('<p>No responses yet.</p>');
+    } else {
+      htmlParts.push('<div class="responses">');
+      responses.forEach(r => {
+        htmlParts.push(`
+          <div class="response">
+            <div class="response-meta"><strong>Time:</strong> ${r.time} | <strong>Status:</strong> ${r.status || '-'} | <strong>Assigned to:</strong> ${r.assigned_to || '-'}</div>
+            <div class="response-text"><pre>${this.escapeHtml(r.text || '')}</pre></div>
+          </div>
+        `);
+      });
+      htmlParts.push('</div>');
+    }
 
-      <button id="respond-button">Respond</button>
-    `;
+    // Respond button
+    htmlParts.push(`<div class="respond-btn-container"><button id="respond-btn">Respond</button></div>`);
 
     const css = `
-      h2 {
-        color: var(--text-color);
-      }
-      .ticket-info {
-        width: 100%;
-        border-collapse: collapse;
-        margin-bottom: 1em;
-      }
-      .ticket-info th {
-        text-align: left;
-        background: var(--nav_bar-bg-color);
-        padding: 4px;
-        color: var(--text-color);
-      }
-      .ticket-info td {
-        padding: 4px;
-      }
-      .ticket-text {
-        background: var(--main-bg-color);
-        border: 1px solid #ccc;
-        padding: 8px;
-        min-height: 100px;
-        white-space: pre-wrap;
-      }
-      .responses .response {
-        border: 1px solid #ccc;
-        margin-bottom: 8px;
-      }
-      .response-header {
-        background: var(--nav_bar-bg-color);
-        padding: 4px;
-        font-weight: bold;
-      }
-      .response-text {
-        padding: 4px;
-        white-space: pre-wrap;
-      }
-      #respond-button {
-        background: var(--button-bg-color);
-        color: var(--button-text-color);
-        padding: 8px 12px;
-        border: none;
-        cursor: pointer;
-      }
+      .ticket-table th { text-align: left; padding-right: 8px; color: var(--text-color); }
+      .ticket-table td { padding: 4px 8px; }
+      .ticket-text { background: var(--main-bg-color); border: 1px solid #ccc; padding: 8px; white-space: pre-wrap; }
+      .responses { margin-top: 12px; }
+      .response { border-top: 1px solid #ccc; padding: 8px 0; }
+      .response-meta { font-size: 0.9em; color: #555; margin-bottom: 4px; }
+      .response-text { white-space: pre-wrap; }
+      #respond-btn { background: var(--button-bg-color); color: var(--button-text-color); padding: 6px 12px; border: none; cursor: pointer; border-radius: 4px; }
+      #respond-btn:hover { opacity: 0.9; }
+      .respond-btn-container { margin-top: 16px; }
     `;
 
-    const shadowRoot = this.mount(html, css);
+    // Mount widget
+    const fullHtml = `<div class="ticket-details">${htmlParts.join("\n")}</div>`;
+    const root = this.core.mount('main', fullHtml, css);
 
-    // Attach event listener to the Respond button
-    const btn = shadowRoot.getElementById("respond-button");
+    // Attach click listener for respond button
+    const btn = root.getElementById('respond-btn');
     if (btn) {
-      btn.addEventListener("click", () => {
-        this.core.route("ticket_response", this.ticketId);
+      btn.addEventListener('click', () => {
+        this.core.route('ticket_response', this.ticketId);
       });
     }
   }
 
-  // Helper to mount and keep reference to shadow root
-  mount(html, css = "") {
-    this.shadowRoot = this.core.mount("main", html, css);
-    return this.shadowRoot;
+  renderNotFound() {
+    const html = `<h2>Ticket not found</h2><p>No ticket with ID ${this.ticketId} exists.</p>`;
+    const css = ``;
+    this.core.mount('main', html, css);
   }
 
-  // Basic HTML escaping
   escapeHtml(str) {
-    if (str == null) return "";
+    if (str === null || str === undefined) return '';
     return String(str)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -241,3 +232,5 @@ export class TicketViewer {
       .replace(/'/g, "&#39;");
   }
 }
+
+export default TicketDetailsPlugin;

@@ -67,10 +67,10 @@
             left: 50%;
             transform: translate(-50%, -50%);
             padding: 20px;
-            width: 80%;
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            width: fit-content;
         }
     </style>
 </head>
@@ -96,7 +96,8 @@
 </script>
 <script type="module">
 // start framework ----------------------------------
-import {SQLDb,WebCogsCore} from "../../js/webcogs_core.js"
+import {SQLDb} from "../../js/webcogs_core.js"
+import {TicketAppCore} from "./core.js"
 function router(route, ...params) {
     console.log("Router received route request: "+route)
     // check invalid access error, redirect to login
@@ -106,23 +107,30 @@ function router(route, ...params) {
     }
     try {
         // check if route requires modal dialog
-        if (route == "login") {
-        document.getElementById('overlay').style.display = 'block';
+        if (route == "login" || route == "show_popup") {
+            document.getElementById('overlay').style.display = 'block';
+            // keep updating the sidebar
+            core.initPlugin("sidebar_tickets")
+            core.initPlugin(route, ...params)
+        } else if (route == "hide_popup") {
+            document.getElementById('overlay').style.display = 'none';
         } else if (route == "logged_in") {
-            core.login(params[0],params[1]).then((token) => {
-                if (token) {
-                    db.setToken(token)
+            core.login(params[0],params[1]).then((userinfo) => {
+                console.log(userinfo)
+                if (userinfo.user_id) {
+                    core.user_id = userinfo.user_id
+                    core.user_role = userinfo.user_role
                     document.getElementById('overlay').style.display = 'none';
                     core.initPlugin("mainmenu")
                     core.initPlugin("sidebar_tickets")
                     //console.log(token)
                 } else {
-                    core.initPlugin("login","Failed to login (note: demo login is 'admin' / 'admin')")
+                    core.initPlugin("login","Failed to login)")
                 }
             })
             //alert("Logged in with: "+JSON.stringify(params))
         } else if (route == "logout") {
-            db.setToken(null)
+            core.logout()
             // clear screen
             core.unmountShadowDom("main")
             core.unmountShadowDom("nav_bar")
@@ -146,8 +154,8 @@ function mounter(location, html_code, css_code) {
     // just delegate to default implementation
     return core.mountShadowDom(location,html_code,css_code)
 }
-var db = new SQLDb("db/run")
-var core = new WebCogsCore(router,mounter,db)
+var db = new SQLDb("db/run","webcogs_app_csrf_token")
+var core = new TicketAppCore(router,mounter,db)
 async function init() {
     await core.loadPlugins(window.location.pathname.replace(/[^/]*$/, ''),"manifest.json")
     document.getElementById('overlay').style.display = 'block';

@@ -26,6 +26,11 @@ core.route has the following parameters:
 core.db is a SQLite compatible database object. It has the following functions: 
 - async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
+## Additional core functions
+
+core.getUserId() - get ID of logged in user
+core.getUserRole() - get role of logged in user (user, developer, or admin)
+
 ## available core.mount locations
 
 - modal_dialog - modal dialog that displays as an overlay
@@ -39,9 +44,17 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+## General guidelines
+
 Widgets should always display a title.
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+If showing an organization, always show the organisation name and not the organization ID.
+
+Users should be shown like this: first_name surname (@username)
+
+Ticket should be shown like this: Ticket #ticket_id
 
 
 ## CSS definitions
@@ -54,11 +67,19 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
   --top-menu-text-color: #fff;
   --button-bg-color: #aaf;
   --button-text-color: #006;
+  --highlight-ticket-bg-color: #eaa;
 }
 
 
 ## SQL table definitions
 
+
+-- Organization role is one of: customer, vendor
+CREATE TABLE Organization (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL
+);
 
 -- User role is one of: user, developer, admin
 CREATE TABLE User (
@@ -67,7 +88,7 @@ CREATE TABLE User (
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    organization TEXT NOT NULL,
+    organization_id INTEGER NOT NULL,
     role TEXT NOT NULL,
     status TEXT NOT NULL
 );
@@ -76,110 +97,175 @@ CREATE TABLE User (
 -- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	user INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
+    assigned_to INTEGER, -- organization ID which the ticket is assigned to
 	text TEXT NOT NULL,
 	time DATETIME NOT NULL,
     status TEXT NOT NULL
 );
 
 -- A ticket can have any number of responses
--- Each response sets the status or text fields, or both
+-- Each response sets at least one of the fields: assigned_to, status, or text.
 CREATE TABLE Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
     time DATETIME NOT NULL,
+    assigned_to TEXT,
     status TEXT,
     text TEXT
 )
 
 @webcogs_user_prompt
-Create a widget that shows in the sidebar, showing a vertical list of all tickets with status=open, sorted by date.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.
+Create a widget that shows in the sidebar, showing a vertical list of all tickets assigned to the logged in user's organization and with status=open, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  
 @webcogs_end_prompt_section*/
-export class OpenTicketsSidebar {
+/*
+  Plugin: SidebarTicketList
+  Displays, in the sidebar, the list of open tickets that are assigned to
+  the logged-in user’s organisation.  Clicking a ticket routes to
+  ticket_overview with the ticket id.
+*/
+
+export default class SidebarTicketList {
     constructor(core) {
         this.core = core;
-        // Mount initial widget in the side bar
-        this.root = core.mount(
-            'side_bar',
-            `
-            <div class="ticket-widget">
-                <h3 class="title">Open Tickets</h3>
-                <div class="content"><p>Loading…</p></div>
-            </div>
-            `,
-            `
-            .ticket-widget {
-                color: var(--text-color);
-                background-color: var(--main-bg-color);
-                padding: 10px;
-                font-family: sans-serif;
-            }
-            .ticket-widget .title {
-                margin: 0 0 8px 0;
-                font-size: 16px;
-            }
-            .ticket-item {
-                cursor: pointer;
-                padding: 6px 4px;
-                border-bottom: 1px solid #ccc;
-            }
-            .ticket-item:hover {
-                background-color: #f0f0f0;
-            }
-            .empty {
-                font-style: italic;
-            }
-            `
-        );
-
-        // Load data
-        this.loadTickets();
+        this.shadowRoot = null;
+        // Start initialisation
+        this.init();
     }
 
-    async loadTickets() {
+    async init() {
         try {
-            // Query DB for open tickets, newest first
-            const tickets = await this.core.db.run(
-                "SELECT id, text, time FROM Ticket WHERE status=? ORDER BY time DESC",
-                ["open"]
-            );
-
-            const content = this.root.querySelector('.content');
-            // Clear current content
-            content.innerHTML = '';
-
-            if (!tickets || tickets.length === 0) {
-                content.innerHTML = '<p class="empty">No open tickets</p>';
+            // 1) Find the logged-in user and their organisation
+            const currentUserId = this.core.getUserId();
+            if (!currentUserId) {
+                // Not logged in – nothing to show
                 return;
             }
 
-            // Build list
-            const ul = document.createElement('ul');
-            ul.style.listStyle = 'none';
-            ul.style.padding = '0';
-            ul.style.margin = '0';
+            const userRes = await this.core.db.run(
+                "SELECT organization_id FROM User WHERE id=?",
+                [currentUserId]
+            );
+            if (!userRes || userRes.length === 0) {
+                return;
+            }
+            const orgId = userRes[0].organization_id;
 
-            tickets.forEach(t => {
-                const li = document.createElement('li');
-                li.className = 'ticket-item';
-                // Show id and a snippet of text (first 30 chars)
-                let snippet = t.text;
-                if (snippet.length > 30) snippet = snippet.slice(0, 30) + '…';
-                li.textContent = `#${t.id} – ${snippet}`;
+            // 2) Query all open tickets assigned to this organisation
+            const tickets = await this.core.db.run(
+                `SELECT Ticket.id            AS ticket_id,
+                        Ticket.text          AS ticket_text,
+                        Ticket.time          AS submitted_at,
+                        Ticket.status        AS ticket_status,
+                        Ticket.assigned_to   AS assigned_org_id,
+                        Submitter.first_name AS submitter_first_name,
+                        Submitter.surname    AS submitter_surname,
+                        Submitter.username   AS submitter_username,
+                        Org.name             AS assigned_org_name
+                 FROM Ticket
+                 JOIN User  AS Submitter ON Submitter.id = Ticket.submitted_by
+                 LEFT JOIN Organization AS Org       ON Org.id = Ticket.assigned_to
+                 WHERE Ticket.status = 'open' AND Ticket.assigned_to = ?
+                 ORDER BY Ticket.time DESC`,
+                [orgId]
+            );
 
-                // Attach click handler
-                li.addEventListener('click', () => {
-                    this.core.route('ticket_overview', t.id);
-                });
-
-                ul.appendChild(li);
-            });
-
-            content.appendChild(ul);
+            // 3) Mount the widget HTML/CSS
+            this.mountWidget(tickets);
         } catch (err) {
-            console.error('Error loading tickets', err);
-            const content = this.root.querySelector('.content');
-            content.innerHTML = '<p class="empty">Error loading tickets</p>';
+            console.error("SidebarTicketList plugin error", err);
+        }
+    }
+
+    mountWidget(tickets) {
+        const html = `
+            <div class="ticket-sidebar-widget">
+                <h2 class="title">Open Tickets Assigned To Us</h2>
+                <div class="tickets-container">
+                    ${tickets && tickets.length ? tickets.map(t => this.renderTicketItem(t)).join("") : "<p class=\"empty\">No open tickets assigned.</p>"}
+                </div>
+            </div>
+        `;
+
+        const css = `
+            .ticket-sidebar-widget {
+                font-family: Arial, sans-serif;
+                color: var(--text-color);
+            }
+            .title {
+                font-size: 1.1rem;
+                margin: 0 0 0.5rem 0;
+            }
+            .tickets-container {
+                display: flex;
+                flex-direction: column;
+                gap: 0.3rem;
+            }
+            .ticket-item {
+                padding: 0.4rem 0.5rem;
+                background: var(--highlight-ticket-bg-color);
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            .ticket-item:hover {
+                opacity: 0.85;
+            }
+            .ticket-header {
+                font-weight: bold;
+                margin-bottom: 0.2rem;
+            }
+            .ticket-meta {
+                font-size: 0.8rem;
+            }
+            .empty {
+                font-style: italic;
+                font-size: 0.9rem;
+            }
+        `;
+
+        this.shadowRoot = this.core.mount("side_bar", html, css);
+        if (!this.shadowRoot) return;
+
+        // Attach click listeners for each item
+        const items = this.shadowRoot.querySelectorAll(".ticket-item");
+        items.forEach(item => {
+            item.addEventListener("click", e => {
+                const ticketId = e.currentTarget.dataset.ticketId;
+                if (ticketId) {
+                    this.core.route("ticket_overview", parseInt(ticketId, 10));
+                }
+            });
+        });
+    }
+
+    renderTicketItem(t) {
+        const submittedDate = new Date(t.submitted_at).toLocaleString();
+        const submitter = `${t.submitter_first_name} ${t.submitter_surname} (@${t.submitter_username})`;
+        const assignedOrg = t.assigned_org_name ? t.assigned_org_name : "None";
+        return `
+            <div class="ticket-item" data-ticket-id="${t.ticket_id}">
+                <div class="ticket-header">Ticket #${t.ticket_id}: ${this.escapeHtml(t.ticket_text)}</div>
+                <div class="ticket-meta">Submitted: ${submittedDate}</div>
+                <div class="ticket-meta">By: ${this.escapeHtml(submitter)}</div>
+                <div class="ticket-meta">Assigned to: ${this.escapeHtml(assignedOrg)}</div>
+            </div>
+        `;
+    }
+
+    // Basic HTML escaping to avoid breaking the widget
+    escapeHtml(str) {
+        return String(str)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    // Destructor if core supports plugin destruction in future
+    destroy() {
+        if (this.shadowRoot && this.shadowRoot.host) {
+            this.shadowRoot.host.remove();
         }
     }
 }

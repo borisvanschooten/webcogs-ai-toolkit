@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available.  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -26,6 +26,11 @@ core.route has the following parameters:
 core.db is a SQLite compatible database object. It has the following functions: 
 - async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
+## Additional core functions
+
+core.getUserId() - get ID of logged in user
+core.getUserRole() - get role of logged in user (user, developer, or admin)
+
 ## available core.mount locations
 
 - modal_dialog - modal dialog that displays as an overlay
@@ -39,9 +44,17 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+## General guidelines
+
 Widgets should always display a title.
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+If showing an organization, always show the organisation name and not the organization ID.
+
+Users should be shown like this: first_name surname (@username)
+
+Ticket should be shown like this: Ticket #ticket_id
 
 
 ## CSS definitions
@@ -54,138 +67,238 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
   --top-menu-text-color: #fff;
   --button-bg-color: #aaf;
   --button-text-color: #006;
+  --highlight-ticket-bg-color: #eaa;
 }
 
 
 ## SQL table definitions
 
+
+-- Organization role is one of: customer, vendor
+CREATE TABLE Organization (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL
+);
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    birth_date DATE NOT NULL
+    organization_id INTEGER NOT NULL,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL
 );
 
+-- Ticket status is same as status of last response
+-- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	user INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
+    assigned_to INTEGER, -- organization ID which the ticket is assigned to
 	text TEXT NOT NULL,
-	entry_date DATE NOT NULL,
-	response_date DEFAULT NULL,
-    response_text TEXT DEFAULT NULL
+	time DATETIME NOT NULL,
+    status TEXT NOT NULL
 );
+
+-- A ticket can have any number of responses
+-- Each response sets at least one of the fields: assigned_to, status, or text.
+CREATE TABLE Response (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticket_id INTEGER NOT NULL,
+    time DATETIME NOT NULL,
+    assigned_to TEXT,
+    status TEXT,
+    text TEXT
+)
 
 @webcogs_user_prompt
 Write a plugin that shows the main menu, which is a horizontal area at the top.  The main menu has the following items, which should route to particular routes when clicked:
 
+- Submit ticket - route to submit_ticket
 - Users - route to useradmin
 - Tickets - route to ticketadmin
 - Stats - route to ticket_stats
 
 The menu item that is selected by the user should be highlighted.
 
-At the right is a logout button that routes to logout.  
+At the right, show:
+
+- The logged in user.
+- a logout button that routes to logout.  
 
 @webcogs_end_prompt_section*/
-export default class MainMenu {
-  constructor(core) {
-    this.core = core;
-
-    const html = `
-      <div class="top-menu" role="navigation" aria-label="Main menu">
-        <div class="menu-item" data-route="useradmin">Users</div>
-        <div class="menu-item" data-route="ticketadmin">Tickets</div>
-        <div class="menu-item" data-route="ticket_stats">Stats</div>
-        <div class="spacer"></div>
-        <button class="logout-btn" data-route="logout" title="Logout">Logout</button>
-      </div>
-    `;
-
-    const css = `
-      .top-menu {
-        display: flex;
-        align-items: center;
-        background-color: var(--top_menu-bg-color);
-        color: var(--top-menu-text-color);
-        padding: 0.5rem 1rem;
-        font-family: sans-serif;
-        box-sizing: border-box;
-        width: 100%;
-      }
-
-      .menu-item {
-        margin-right: 1rem;
-        cursor: pointer;
-        padding: 0.25rem 0.5rem;
-        user-select: none;
-        border-radius: 4px;
-        transition: background-color 0.2s;
-      }
-
-      .menu-item:hover {
-        background-color: rgba(255,255,255,0.15);
-      }
-
-      .menu-item.selected {
-        background-color: var(--button-bg-color);
-        color: var(--button-text-color);
-      }
-
-      .spacer {
-        flex-grow: 1;
-      }
-
-      .logout-btn {
-        background-color: var(--button-bg-color);
-        color: var(--button-text-color);
-        border: none;
-        padding: 0.4rem 0.8rem;
-        cursor: pointer;
-        border-radius: 4px;
-        font-weight: bold;
-      }
-
-      .logout-btn:hover {
-        opacity: 0.85;
-      }
-    `;
-
-    // Mount the widget in the nav_bar area and keep a reference to the shadow root.
-    this.root = core.mount("nav_bar", html, css);
-
-    // Save references for later use
-    this.menuItems = this.root.querySelectorAll('.menu-item');
-    this.logoutBtn = this.root.querySelector('.logout-btn');
-
-    // Attach event listeners to menu items
-    this.menuItems.forEach(item => {
-      item.addEventListener('click', (e) => {
-        const target = e.currentTarget;
-        const route = target.getAttribute('data-route');
-        this.selectItem(target);
-        this.core.route(route);
-      });
-    });
-
-    // Logout button listener
-    this.logoutBtn.addEventListener('click', () => {
-      this.clearSelection();
-      this.core.route('logout');
-    });
-  }
-
-  // Mark the given element as selected and clear others
-  selectItem(element) {
-    this.menuItems.forEach(item => item.classList.remove('selected'));
-    if (element) {
-      element.classList.add('selected');
+class MainMenu {
+    /**
+     * Creates a main menu navigation bar.
+     * @param {object} core - core API object provided by the host application
+     */
+    constructor(core) {
+        this.core = core;
+        this.menuItems = [
+            { label: "Submit ticket", route: "submit_ticket" },
+            { label: "Users",          route: "useradmin"      },
+            { label: "Tickets",        route: "ticketadmin"    },
+            { label: "Stats",          route: "ticket_stats"   }
+        ];
+        // Keep currently selected route in memory for highlight purposes
+        this.selectedRoute = null;
+        // Render UI
+        this.mountPoint = this.core.mount(
+            "nav_bar",
+            this._generateHTML(),
+            this._generateCSS()
+        );
+        // Populate user info (async)
+        this._populateUserInfo();
+        // Set up event listeners for menu clicks and logout
+        this._attachEventHandlers();
     }
-  }
 
-  // Clear all selections (used when logging out)
-  clearSelection() {
-    this.menuItems.forEach(item => item.classList.remove('selected'));
-  }
+    /**
+     * Builds the HTML markup for the menu widget.
+     * @returns {string}
+     */
+    _generateHTML() {
+        // Build list items
+        const itemsHTML = this.menuItems.map(item => {
+            return `<li class="menu-item" data-route="${item.route}">${item.label}</li>`;
+        }).join("");
+
+        return `
+            <div class="main-menu-widget" title="Main Menu">
+                <ul class="menu-list">${itemsHTML}</ul>
+                <div class="right-section">
+                    <span class="user-display">&nbsp;</span>
+                    <button class="logout-btn">Logout</button>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * Builds the CSS for the widget.
+     * @returns {string}
+     */
+    _generateCSS() {
+        return `
+            .main-menu-widget {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                background-color: var(--top_menu-bg-color);
+                color: var(--top-menu-text-color);
+                padding: 0 10px;
+                box-sizing: border-box;
+                font-family: sans-serif;
+            }
+
+            .menu-list {
+                list-style: none;
+                margin: 0;
+                padding: 0;
+                display: flex;
+                gap: 15px;
+            }
+
+            .menu-item {
+                cursor: pointer;
+                padding: 10px 5px;
+                user-select: none;
+            }
+
+            .menu-item:hover {
+                background-color: rgba(255,255,255,0.1);
+            }
+
+            .menu-item.selected {
+                background-color: var(--button-bg-color);
+                color: var(--button-text-color);
+            }
+
+            .right-section {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .logout-btn {
+                background-color: var(--button-bg-color);
+                color: var(--button-text-color);
+                border: none;
+                padding: 6px 12px;
+                cursor: pointer;
+            }
+
+            .logout-btn:hover {
+                opacity: 0.8;
+            }
+        `;
+    }
+
+    /**
+     * Attach click handlers to menu items and logout button.
+     */
+    _attachEventHandlers() {
+        const shadowRoot = this.mountPoint;
+        // Menu item clicks
+        const menuItems = shadowRoot.querySelectorAll('.menu-item');
+        menuItems.forEach(li => {
+            li.addEventListener('click', () => {
+                const route = li.getAttribute('data-route');
+                if (!route) return;
+                this._highlightMenuItem(li);
+                this.core.route(route);
+            });
+        });
+
+        // Logout button
+        const logoutBtn = shadowRoot.querySelector('.logout-btn');
+        logoutBtn.addEventListener('click', () => {
+            this.core.route('logout');
+        });
+    }
+
+    /**
+     * Highlights the selected menu item and clears previous selection.
+     * @param {HTMLElement} selectedLi
+     */
+    _highlightMenuItem(selectedLi) {
+        const shadowRoot = this.mountPoint;
+        shadowRoot.querySelectorAll('.menu-item').forEach(li => {
+            if (li === selectedLi) {
+                li.classList.add('selected');
+            } else {
+                li.classList.remove('selected');
+            }
+        });
+    }
+
+    /**
+     * Fetch user details from DB and update UI.
+     */
+    async _populateUserInfo() {
+        try {
+            const userId = this.core.getUserId();
+            if (!userId) return;
+            const rows = await this.core.db.run(
+                "SELECT first_name, surname, username FROM User WHERE id = ?",
+                [userId]
+            );
+            if (rows && rows.length > 0) {
+                const { first_name, surname, username } = rows[0];
+                const displayText = `${first_name} ${surname} (@${username})`;
+                const shadowRoot = this.mountPoint;
+                const userDisplayEl = shadowRoot.querySelector('.user-display');
+                if (userDisplayEl) userDisplayEl.textContent = displayText;
+            }
+        } catch (e) {
+            console.error('MainMenu: failed to load user info', e);
+        }
+    }
 }
+
+export default MainMenu;

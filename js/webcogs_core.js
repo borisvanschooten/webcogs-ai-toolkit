@@ -1,14 +1,16 @@
 export class SQLDb {
 	baseurl;
-	token=null;
 	lastError=null;
-	constructor(baseurl) {
+	authCookieName=null;
+	constructor(baseurl,authCookieName) {
 		this.baseurl = baseurl
+		this.authCookieName = authCookieName
 	}
 	async run(query,interpolation_params) {
+		const getCookie = n => (document.cookie.split('; ').find(row => row.startsWith(n + '=')) || '').split('=')[1] || null;
 		const url = new URL(this.baseurl, window.location.origin);
 		url.searchParams.append('query', query);
-		url.searchParams.append('token', this.token);
+		url.searchParams.append('token', getCookie(this.authCookieName));
 		if (interpolation_params) {
 			url.searchParams.append('params',JSON.stringify(interpolation_params))
 		}
@@ -20,7 +22,7 @@ export class SQLDb {
 		})
 		var res_obj = await res.json()
 		if (typeof res_obj.error != "undefined") {
-			this.setToken(null)
+			console.log("Database reports error: "+res.obj.error)
 			this.lastError = "Invalid access"
 			throw new Error("Invalid access")
 		}
@@ -38,10 +40,6 @@ export class SQLDb {
 		//console.log(ret)
 		console.log(`SQLDb returned ${ret.length} results.`)
 		return ret
-	}
-	setToken(token) {
-		this.token = token
-		this.lastError = null
 	}
 }
 
@@ -189,7 +187,7 @@ export class WebCogsCore {
     /** Authenticates a user by username and password, retrieves a token upon success.
      * @param {string} username - The username for authentication.
      * @param {string} password - The password for authentication.
-     * @return {Promise<string>} - A promise that resolves to the token if authentication is successful.
+     * @return {Promise<object>} - object has structure {user_id,user_role}
      */
     async login(username, password) {
         try {
@@ -209,13 +207,34 @@ export class WebCogsCore {
             }
 
             const res_obj = await res.json();
-            if (res_obj.token) {
-                return res_obj.token;
+            if (res_obj.user_id) {
+                return res_obj;
             } else {
                 throw new Error('Authentication failed: No token received');
             }
         } catch (error) {
             console.error('Error during authentication:', error);
+            return null;
+        }
+    }
+
+ 	/** Logs out user by deleting cookies
+     */
+    async logout() {
+        try {
+            const url = new URL('auth/logout', window.location.origin);
+            const res = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (!res.ok) {
+                throw new Error(`Error calling /auth/logout: ${res.statusText}`);
+            }
+            const res_obj = await res.json();
+        } catch (error) {
+            console.error('Error calling /auth/logout:', error);
             return null;
         }
     }

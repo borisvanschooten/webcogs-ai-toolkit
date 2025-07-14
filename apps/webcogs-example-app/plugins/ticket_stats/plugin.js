@@ -154,7 +154,7 @@ export default class TicketsPerDayChart {
          GROUP BY day`,
         [startDate, endDate]
       );
-
+      console.log(rows)
       // Map DB results to a dictionary {day: count}
       const countsByDay = {};
       rows.forEach(r => {

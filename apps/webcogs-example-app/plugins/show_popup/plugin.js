@@ -26,6 +26,11 @@ core.route has the following parameters:
 core.db is a SQLite compatible database object. It has the following functions: 
 - async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
+## Additional core functions
+
+core.getUserId() - get ID of logged in user
+core.getUserRole() - get role of logged in user (user, developer, or admin)
+
 ## available core.mount locations
 
 - modal_dialog - modal dialog that displays as an overlay
@@ -39,13 +44,16 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
-Widgets should always display a title.
-
 Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
 
 ## General guidelines
 
-If showing a user's organization, show the organisation name and not the organizaiton ID.
+Widgets should always display a title.
+
+If showing an organization, always show the organisation name and not the organization ID.
+
+Users should be shown like this: first_name surname (@username)
+
 
 
 ## CSS definitions
@@ -106,122 +114,76 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Write a plugin that shows a single user in a table with two columns, keys left and values right. The user ID is passed as a custom parameter to the constructor.  Below the user table should be the list of tickets submitted by the user. When you click on a ticket, route to ticket_overview with the ticket ID as custom parameter.
-
-
+Write a modal dialog widget that shows the text passed via the second plugin contructor parameter.  Show an OK button, which routes to hide_popup when clicked.
 @webcogs_end_prompt_section*/
-// Plugin: UserViewer
-// Shows a single user in a two–column table and lists the tickets submitted by the user.
-// constructor(core, userId)
-
-export class UserViewer {
-    constructor(core, userId) {
+export default class ModalDialog {
+    constructor(core, text="") {
         this.core = core;
-        this.userId = userId;
-        this.shadow = null;
-        // Start asynchronous loading & rendering
-        (async () => { await this._init(); })();
-    }
-
-    async _init() {
-        const db = this.core.db;
-
-        // Fetch user
-        const users = await db.run("SELECT * FROM User WHERE id=?", [this.userId]);
-        if (users.length === 0) {
-            const html = `<div class="user-detail"><h2>User not found</h2></div>`;
-            this.shadow = this.core.mount("main", html, "");
-            return;
-        }
-        const user = users[0];
-
-        // Fetch organisation name, show name instead of ID
-        const orgRows = await db.run("SELECT name FROM Organization WHERE id=?", [user.organization_id]);
-        const organisationName = orgRows.length ? orgRows[0].name : "Unknown";
-
-        // Build the user two–column table
-        const userRows = [
-            ["Username", user.username],
-            ["Email", user.email],
-            ["First name", user.first_name],
-            ["Surname", user.surname],
-            ["Organization", organisationName],
-            ["Role", user.role],
-            ["Status", user.status]
-        ];
-        let userTableHTML = `<table class="user-table"><tbody>`;
-        userRows.forEach(([key, value]) => {
-            userTableHTML += `<tr><td class="key">${key}</td><td class="value">${value}</td></tr>`;
-        });
-        userTableHTML += `</tbody></table>`;
-
-        // Fetch tickets submitted by the user
-        const tickets = await db.run(
-            "SELECT id, time, status, text FROM Ticket WHERE submitted_by=? ORDER BY time DESC",
-            [this.userId]
-        );
-
-        let ticketsHTML = `<h3>Submitted Tickets</h3>`;
-        if (tickets.length === 0) {
-            ticketsHTML += `<p>No tickets submitted.</p>`;
-        } else {
-            ticketsHTML += `<table class="tickets-table"><thead>` +
-                            `<tr><th>ID</th><th>Time</th><th>Status</th><th>Text</th></tr>` +
-                           `</thead><tbody>`;
-            tickets.forEach(t => {
-                const preview = t.text.length > 40 ? t.text.substring(0, 37) + "…" : t.text;
-                ticketsHTML += `<tr class="ticket-row" data-ticket-id="${t.id}" style="cursor:pointer;">` +
-                                `<td>${t.id}</td>` +
-                                `<td>${t.time}</td>` +
-                                `<td>${t.status}</td>` +
-                                `<td>${preview}</td>` +
-                               `</tr>`;
-            });
-            ticketsHTML += `</tbody></table>`;
-        }
-
-        const fullHTML = `
-            <div class="user-detail">
-                <h2>User Details</h2>
-                ${userTableHTML}
-                ${ticketsHTML}
-            </div>`;
-
+        this.text = text;
+        // Create the HTML for the modal dialog
+        const html = `
+            <div class="dialog-container">
+                <h2 class="dialog-title">Message</h2>
+                <p class="dialog-text">${this._escapeHTML(this.text)}</p>
+                <button id="ok-btn" class="ok-button">OK</button>
+            </div>
+        `;
         const css = `
-            .user-detail {
+            .dialog-container {
+                background: var(--main-bg-color);
                 color: var(--text-color);
-                background-color: var(--main-bg-color);
-                padding: 10px;
-                font-family: sans-serif;
+                padding: 20px;
+                border-radius: 6px;
+                max-width: 400px;
+                box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+                text-align: center;
+                font-family: Arial, sans-serif;
             }
-            .user-detail h2, .user-detail h3 { margin: 0.5em 0; }
-            .user-table, .tickets-table {
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 10px;
+            .dialog-title {
+                margin-top: 0;
+                margin-bottom: 15px;
+                font-size: 1.3em;
             }
-            .user-table td.key {
+            .dialog-text {
+                margin-bottom: 20px;
+                white-space: pre-wrap;
+            }
+            .ok-button {
+                background: var(--button-bg-color);
+                color: var(--button-text-color);
+                border: none;
+                padding: 8px 18px;
+                border-radius: 4px;
+                cursor: pointer;
                 font-weight: bold;
-                width: 30%;
             }
-            .user-table td, .tickets-table th, .tickets-table td {
-                border: 1px solid #ccc;
-                padding: 4px;
-            }
-            .tickets-table tr.ticket-row:hover {
-                background-color: #f0f8ff;
+            .ok-button:hover {
+                opacity: 0.9;
             }
         `;
 
-        // Mount the HTML into the main area
-        this.shadow = this.core.mount("main", fullHTML, css);
+        // Mount the widget
+        this.shadowRoot = this.core.mount("modal_dialog", html, css);
 
-        // Attach click listeners to ticket rows
-        Array.from(this.shadow.querySelectorAll('.ticket-row')).forEach(row => {
-            row.addEventListener('click', () => {
-                const id = Number(row.getAttribute('data-ticket-id'));
-                this.core.route('ticket_overview', id);
+        // Attach event listener to the OK button
+        const okBtn = this.shadowRoot.getElementById("ok-btn");
+        if (okBtn) {
+            okBtn.addEventListener("click", () => {
+                this.core.route("hide_popup");
             });
+        }
+    }
+
+    // Small helper to escape user provided text to prevent HTML injection.
+    _escapeHTML(str) {
+        return String(str).replace(/[&<>'\"]/g, c => {
+            return ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                "'": '&#39;',
+                '"': '&quot;'
+            })[c];
         });
     }
 }

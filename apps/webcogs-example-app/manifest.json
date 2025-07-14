@@ -23,6 +23,11 @@
 			"file": "mainmenu/plugin.js"
 		},
 		{
+			"name": "show_popup",
+			"prompts": [ { "text": "Create a modal dialog widget that shows the text passed via the second plugin contructor parameter.  Show an OK button, which routes to hide_popup when clicked." } ],
+			"file": "show_popup/plugin.js"
+		},
+		{
 			"name": "useradmin",
 			"prompts": [ { "file": "useradmin/plugin_docs.md" } ],
 			"file": "useradmin/plugin.js"
@@ -34,7 +39,7 @@
 		},
 		{
 			"name": "sidebar_tickets",
-			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all tickets with status=open, sorted by date.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID." } ],
+			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all tickets assigned to the logged in user's organization and with status=open, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  " } ],
 			"file": "sidebar_tickets/plugin.js"
 		},
 		{
@@ -43,13 +48,18 @@
 			"file": "ticketadmin/plugin.js"
 		},
 		{
+			"name": "submit_ticket",
+			"prompts": [ { "text": "Show a form to submit a ticket, with the following fields: text - a wide textarea; assigned_to - a dropdown with as options None (NULL), and each vendor organization.  Show a submit button that creates a new ticket when clicked.  The new ticket has status=open and submitted_by equals the currently logged in user. Route to show_popup with as custom parameter 'Ticket submitted.'." } ],
+			"file": "submit_ticket/plugin.js"
+		},
+		{
 			"name": "ticket_overview",
 			"prompts": [ { "file": "ticket_overview/plugin_docs.md" } ],
 			"file": "ticket_overview/plugin.js"
 		},
 		{
 			"name": "ticket_response",
-			"prompts": [ { "text": "Show the fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor. All responses to this ticket should be shown below the ticket. Below that, show a form for creating a new response, with the response text in a textarea, and the response status in a multiple choice field.  Statuses can be: open, in_progress, fixed, not_fixed. Add a submit button to submit the response. If a response is submitted, use SQL UPDATE to set the response text, status, and date.  Also set the ticket status. Then route to ticket_response." } ],
+			"prompts": [ { "text": "Show the fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor. All responses to this ticket should be shown below the ticket. Below that, show a form for creating a new response, with the response text in a textarea, the response status in a multiple choice field, and assigned_to as a multiple choice field with as choices '(unchanged)', and the existing vendor organizations.  Statuses can be: '(unchanged)', open, in_progress, fixed, not_fixed. Add a submit button to submit the response. If a response is submitted, add a response record. Only set text if the text is not empty. Only set status and assigned_to if not unchanged.  Also update the ticket record with status and assigned_to if not unchanged. Then route back to ticket_response." } ],
 			"file": "ticket_response/plugin.js"
 		},
 		{

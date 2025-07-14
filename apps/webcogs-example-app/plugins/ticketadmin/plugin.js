@@ -26,6 +26,11 @@ core.route has the following parameters:
 core.db is a SQLite compatible database object. It has the following functions: 
 - async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
 
+## Additional core functions
+
+core.getUserId() - get ID of logged in user
+core.getUserRole() - get role of logged in user (user, developer, or admin)
+
 ## available core.mount locations
 
 - modal_dialog - modal dialog that displays as an overlay
@@ -39,9 +44,17 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+
+## General guidelines
+
 Widgets should always display a title.
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+If showing an organization, always show the organisation name and not the organization ID.
+
+Users should be shown like this: first_name surname (@username)
+
+Ticket should be shown like this: Ticket #ticket_id
 
 
 ## CSS definitions
@@ -54,20 +67,28 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
   --top-menu-text-color: #fff;
   --button-bg-color: #aaf;
   --button-text-color: #006;
+  --highlight-ticket-bg-color: #eaa;
 }
 
 
 ## SQL table definitions
 
 
--- User role is one of: user, provider, admin
+-- Organization role is one of: customer, vendor
+CREATE TABLE Organization (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL
+);
+
+-- User role is one of: user, developer, admin
 CREATE TABLE User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
-    organization TEXT NOT NULL,
+    organization_id INTEGER NOT NULL,
     role TEXT NOT NULL,
     status TEXT NOT NULL
 );
@@ -76,222 +97,162 @@ CREATE TABLE User (
 -- Status can be: open, in_progress, fixed, not_fixed
 CREATE TABLE Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	user INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
+    assigned_to INTEGER, -- organization ID which the ticket is assigned to
 	text TEXT NOT NULL,
 	time DATETIME NOT NULL,
     status TEXT NOT NULL
 );
 
 -- A ticket can have any number of responses
--- Each response sets the status or text fields, or both
-CREATE TABLE Response {
+-- Each response sets at least one of the fields: assigned_to, status, or text.
+CREATE TABLE Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
     time DATETIME NOT NULL,
+    assigned_to TEXT,
     status TEXT,
     text TEXT
-}
+)
 
 @webcogs_user_prompt
-Write a plugin that shows four lists, one for each possible value of status: open, in_progress, fixed, not_fixed. Lists should be descendingly ordered by date. The ticket text should be shown in a large area. Each ticket row should also show the username that issued the ticket, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID. Do not use jquery.
+Write a plugin that shows four lists showing tickets, one for each possible value of ticket status: open, in_progress, fixed, not_fixed.  Lists should be shown one below the other.  Highlight items that are assigned to the logged in user's organization.  Items in the lists should be descendingly ordered by date. The ticket text should be shown in a large area. Each ticket row should also show the username that issued the ticket, the organization name of the user, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID. Do not use jquery.
 
 @webcogs_end_prompt_section*/
-class TicketBoard {
+// TicketStatusLists.js
+export default class TicketStatusLists {
   constructor(core) {
     this.core = core;
-    // Mount the widget in the main area
-    this.root = core.mount('main', this._html(), this._css());
-    // Cache containers for the four lists
-    this.containers = {
-      'open': this.root.querySelector('#list-open'),
-      'in_progress': this.root.querySelector('#list-in-progress'),
-      'fixed': this.root.querySelector('#list-fixed'),
-      'not_fixed': this.root.querySelector('#list-not-fixed')
-    };
-
-    // Start async initialisation
-    this._init();
+    this.statuses = [
+      { key: "open", label: "Open" },
+      { key: "in_progress", label: "In Progress" },
+      { key: "fixed", label: "Fixed" },
+      { key: "not_fixed", label: "Not Fixed" }
+    ];
+    // begin initialization (async detached)
+    this.init();
   }
 
-  async _init() {
-    const statuses = ['open', 'in_progress', 'fixed', 'not_fixed'];
-    for (const status of statuses) {
-      const rows = await this.core.db.run(
-        `SELECT Ticket.id   AS ticket_id,
-                Ticket.text AS ticket_text,
-                Ticket.time AS ticket_time,
-                User.id     AS user_id,
-                User.username AS username
-         FROM Ticket
-         JOIN User ON Ticket.user = User.id
-         WHERE Ticket.status = ?
-         ORDER BY Ticket.time DESC`,
-        [status]
-      );
-      this._renderList(status, rows);
+  async init() {
+    // Identify logged in user's organisation
+    const userId = this.core.getUserId();
+    const orgRows = await this.core.db.run(
+      "SELECT organization_id FROM User WHERE id=?",
+      [userId]
+    );
+    this.loggedOrgId = orgRows.length ? orgRows[0].organization_id : null;
+
+    // fetch tickets grouped by status
+    const ticketData = {};
+    for (const statusObj of this.statuses) {
+      ticketData[statusObj.key] = await this.fetchTicketsByStatus(statusObj.key);
     }
+
+    const { html, css } = this.buildMarkup(ticketData);
+
+    this.shadowRoot = this.core.mount("main", html, css);
+
+    this.attachEventHandlers();
   }
 
-  _renderList(status, rows) {
-    const container = this.containers[status];
-    container.innerHTML = '';
+  async fetchTicketsByStatus(status) {
+    const rows = await this.core.db.run(
+      `SELECT Ticket.id               AS ticket_id,
+              Ticket.text             AS ticket_text,
+              Ticket.time             AS ticket_time,
+              Ticket.assigned_to      AS assigned_to,
+              User.id                 AS user_id,
+              User.username           AS username,
+              User.first_name         AS first_name,
+              User.surname            AS surname,
+              Organization.name       AS org_name
+       FROM Ticket
+       JOIN User          ON Ticket.submitted_by = User.id
+       JOIN Organization  ON User.organization_id = Organization.id
+       WHERE Ticket.status = ?
+       ORDER BY Ticket.time DESC`,
+      [status]
+    );
+    return rows;
+  }
 
-    // Only attach one listener per container
-    if (!container._clickBound) {
-      container.addEventListener('click', (e) => {
-        // If user name clicked
-        const userEl = e.target.closest('.ticket-user');
-        if (userEl) {
-          const userId = parseInt(userEl.dataset.userId, 10);
-          this.core.route('user_overview', userId);
-          e.stopPropagation();
-          return;
-        }
-        // Otherwise row click
-        const rowEl = e.target.closest('.ticket-row');
-        if (rowEl) {
-          const ticketId = parseInt(rowEl.dataset.ticketId, 10);
-          this.core.route('ticket_overview', ticketId);
-        }
+  escapeHtml(text) {
+    if (typeof text !== "string") return text;
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/\"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  buildMarkup(ticketData) {
+    let html = `
+      <div class="ticket-status-lists">
+        <h1>Tickets by Status</h1>
+        ${this.statuses
+          .map((s) => this.buildSectionMarkup(s, ticketData[s.key]))
+          .join("")}
+      </div>`;
+
+    let css = `
+      .ticket-status-lists { color: var(--text-color); background: var(--main-bg-color); padding: 10px; }
+      .ticket-section { margin-bottom: 30px; }
+      .ticket-section h2 { margin: 0 0 10px 0; }
+      .ticket-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 8px; cursor: pointer; background: var(--main-bg-color); transition: background 0.2s ease-in-out; }
+      .ticket-item.highlight { background: var(--highlight-ticket-bg-color); }
+      .ticket-header { font-size: 0.9em; color: #333; display: flex; flex-wrap: wrap; gap: 8px; }
+      .ticket-text { margin-top: 6px; white-space: pre-wrap; font-size: 1.05em; }
+      .user-link { color: blue; text-decoration: underline; cursor: pointer; }
+      .ticket-date { color: #666; }
+    `;
+    return { html, css };
+  }
+
+  buildSectionMarkup(statusObj, tickets) {
+    const itemsHtml = tickets
+      .map((t) => {
+        const highlightClass =
+          this.loggedOrgId !== null && t.assigned_to === this.loggedOrgId
+            ? "highlight"
+            : "";
+        return `<div class="ticket-item ${highlightClass}" data-ticket-id="${t.ticket_id}">
+          <div class="ticket-header">
+            <span class="user-link" data-user-id="${t.user_id}">${this.escapeHtml(
+          `${t.first_name} ${t.surname} (@${t.username})`
+        )}</span>
+            <span class="ticket-date">${new Date(t.ticket_time).toLocaleString()}</span>
+            <span class="ticket-org">${this.escapeHtml(t.org_name)}</span>
+          </div>
+          <div class="ticket-text">${this.escapeHtml(t.ticket_text)}</div>
+        </div>`;
+      })
+      .join("");
+
+    return `<div class="ticket-section" data-status="${statusObj.key}">
+      <h2>${statusObj.label}</h2>
+      ${itemsHtml || "<div>No tickets.</div>"}
+    </div>`;
+  }
+
+  attachEventHandlers() {
+    // Ticket clicks
+    this.shadowRoot.querySelectorAll('.ticket-item').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        // If user link clicked, ignore here (handled separately)
+        if (e.target.closest('.user-link')) return;
+        const ticketId = parseInt(el.getAttribute('data-ticket-id'), 10);
+        this.core.route('ticket_overview', ticketId);
       });
-      container._clickBound = true;
-    }
+    });
 
-    for (const row of rows) {
-      const item = document.createElement('div');
-      item.className = 'ticket-row';
-      item.dataset.ticketId = row.ticket_id;
-
-      const header = document.createElement('div');
-      header.className = 'ticket-header';
-
-      const userSpan = document.createElement('span');
-      userSpan.className = 'ticket-user';
-      userSpan.textContent = row.username;
-      userSpan.dataset.userId = row.user_id;
-      header.appendChild(userSpan);
-
-      const dateSpan = document.createElement('span');
-      dateSpan.className = 'ticket-date';
-      const dateObj = new Date(row.ticket_time);
-      dateSpan.textContent = dateObj.toLocaleString();
-      header.appendChild(dateSpan);
-
-      item.appendChild(header);
-
-      const textDiv = document.createElement('div');
-      textDiv.className = 'ticket-text';
-      textDiv.textContent = row.ticket_text;
-      item.appendChild(textDiv);
-
-      container.appendChild(item);
-    }
-  }
-
-  _html() {
-    return `
-      <div class="ticket-board">
-        <h2>Ticket Board</h2>
-        <div class="status-wrapper">
-          <div class="status-column" id="col-open">
-            <h3>Open</h3>
-            <div id="list-open" class="ticket-list"></div>
-          </div>
-
-          <div class="status-column" id="col-in-progress">
-            <h3>In Progress</h3>
-            <div id="list-in-progress" class="ticket-list"></div>
-          </div>
-
-          <div class="status-column" id="col-fixed">
-            <h3>Fixed</h3>
-            <div id="list-fixed" class="ticket-list"></div>
-          </div>
-
-          <div class="status-column" id="col-not-fixed">
-            <h3>Not Fixed</h3>
-            <div id="list-not-fixed" class="ticket-list"></div>
-          </div>
-        </div>
-      </div>
-    `;
-  }
-
-  _css() {
-    return `
-      .ticket-board {
-        font-family: sans-serif;
-        color: var(--text-color);
-        background: var(--main-bg-color);
-        padding: 10px;
-      }
-
-      .ticket-board h2 {
-        text-align: center;
-        margin: 5px 0 15px 0;
-      }
-
-      .status-wrapper {
-        display: flex;
-        gap: 1%;
-      }
-
-      .status-column {
-        flex: 1 1 0;
-        background: #f9f9f9;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-
-      .status-column h3 {
-        margin: 0;
-        padding: 6px;
-        background: var(--nav_bar-bg-color);
-        text-align: center;
-      }
-
-      .ticket-list {
-        overflow-y: auto;
-        flex: 1 1 auto;
-        max-height: 70vh;
-      }
-
-      .ticket-row {
-        padding: 6px;
-        border-bottom: 1px solid #ddd;
-        cursor: pointer;
-      }
-
-      .ticket-row:hover {
-        background: #eef;
-      }
-
-      .ticket-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 4px;
-      }
-
-      .ticket-user {
-        font-weight: bold;
-        color: blue;
-        cursor: pointer;
-      }
-
-      .ticket-date {
-        font-size: 0.8em;
-        color: #666;
-      }
-
-      .ticket-text {
-        white-space: pre-line;
-      }
-    `;
+    // User link clicks
+    this.shadowRoot.querySelectorAll('.user-link').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const userId = parseInt(el.getAttribute('data-user-id'), 10);
+        this.core.route('user_overview', userId);
+      });
+    });
   }
 }
-
-export default TicketBoard;

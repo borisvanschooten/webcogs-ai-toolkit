@@ -1,1 +1,1 @@
-Write a plugin that shows a list of all users in the database, and show all fields for each user. When you click on a user, it should route to "user_overview" with as parameter the user ID.
+Write a plugin that shows a list of all users in the database, and show all fields for each user, including organization name and role. When you click on a user, it should route to "user_overview" with as parameter the user ID.
