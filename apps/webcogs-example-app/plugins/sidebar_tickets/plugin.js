@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -21,6 +21,8 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
+function core.translate(string) - Translate a string into the user's language.
+
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
@@ -30,6 +32,7 @@ core.db is a SQLite compatible database object. It has the following functions:
 
 core.getUserId() - get ID of logged in user
 core.getUserRole() - get role of logged in user (user, developer, or admin)
+async core.getOrganizations() - get all Organization records
 
 ## available core.mount locations
 
@@ -44,7 +47,9 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible. Do not override the styles in the CSS classes you use, use them as-is.  You can assume they are available to any widgets you mount.
+
+For widgets using modal_dialog, use the full available width.
 
 ## General guidelines
 
@@ -56,20 +61,97 @@ Users should be shown like this: first_name surname (@username)
 
 Ticket should be shown like this: Ticket #ticket_id
 
+This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+
 
 ## CSS definitions
 
 :root {
   --text-color: #000;
   --main-bg-color: #fff;
-  --nav_bar-bg-color: #eee;
-  --top_menu-bg-color: #222;
-  --top-menu-text-color: #fff;
-  --button-bg-color: #aaf;
+  --button-bg-color: #bbf;
   --button-text-color: #006;
-  --highlight-ticket-bg-color: #eaa;
+  --highlight-ticket-bg-color: #fcc;
+  --mainmenu-item-selected-bg-color: #66f;
 }
 
+\/* Use UL/LI with the following classes for mainmenu *\/
+ul.mainmenu {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  background-color: #222;
+  margin: 8px;
+}
+li.mainmenu-item {
+  cursor: pointer;
+  padding: 10px 5px;
+  user-select: none;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+    ul.mainmenu {
+        display: block;
+        height: auto;
+    }
+}
+
+span.logged-in-user {
+  font-size: 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+
+\/* Use the organization-avatar styles to add an avatar to each organization *\/
+div.organization-avatar {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+\/* Avatar variant for null organization *\/
+div.organization-avatar.id-none {
+  background-color: #eee;
+}
+\/* Avatar variants numbered "id-1" through "id-6" *\/
+div.organization-avatar.id-1 {
+  background-color: #f84;
+}
+div.organization-avatar.id-2 {
+  background-color: #fe4;
+}
+div.organization-avatar.id-3 {
+  background-color: #0f0;
+}
+div.organization-avatar.id-4 {
+  background-color: #2df;
+}
+div.organization-avatar.id-5 {
+  background-color: #66f;
+}
+div.organization-avatar.id-6 {
+  background-color: #f4f;
+}
+
+input[type="text"], input[type="email"] {
+  width: 100%;
+}
+select {
+  background-color: var(--button-bg-color);
+  font-size: 18px;
+  padding: 4px;
+}
+button {
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  padding: 4px 12px;
+  font-size: 18px;
+  cursor: pointer;
+}
+pre {
+  white-space: pre-wrap;
+}
 
 ## SQL table definitions
 
@@ -89,8 +171,7 @@ CREATE TABLE User (
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     organization_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    status TEXT NOT NULL
+    role TEXT NOT NULL
 );
 
 -- Ticket status is same as status of last response
@@ -116,156 +197,134 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Create a widget that shows in the sidebar, showing a vertical list of all tickets assigned to the logged in user's organization and with status=open, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  
+Create a sidebar widget that shows two vertical lists of tickets, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  The first list shows all tickets assigned to the logged in user's organization and with status=open. The second list shows all tickets submitted by the logged in user, and with status=open or status=in_progress. 
 @webcogs_end_prompt_section*/
-/*
-  Plugin: SidebarTicketList
-  Displays, in the sidebar, the list of open tickets that are assigned to
-  the logged-in user’s organisation.  Clicking a ticket routes to
-  ticket_overview with the ticket id.
-*/
+export class TicketSidebarWidget {
+  constructor(core) {
+    this.core = core;
+    this.init();
+  }
 
-export default class SidebarTicketList {
-    constructor(core) {
-        this.core = core;
-        this.shadowRoot = null;
-        // Start initialisation
-        this.init();
-    }
+  async init() {
+    try {
+      // Get logged-in user information
+      const userId = this.core.getUserId();
+      const userRow = (await this.core.db.run("SELECT organization_id FROM User WHERE id=?", [userId]))[0];
+      const userOrgId = userRow ? userRow.organization_id : null;
 
-    async init() {
-        try {
-            // 1) Find the logged-in user and their organisation
-            const currentUserId = this.core.getUserId();
-            if (!currentUserId) {
-                // Not logged in – nothing to show
-                return;
-            }
+      // Query 1 – tickets assigned to my organisation, status = open
+      const sqlAssigned = `
+        SELECT Ticket.*, 
+               submitter.first_name  AS submit_first_name,
+               submitter.surname     AS submit_surname,
+               submitter.username    AS submit_username,
+               org.name              AS assigned_org_name
+        FROM Ticket
+        JOIN   User submitter         ON Ticket.submitted_by = submitter.id
+        LEFT  JOIN Organization org   ON Ticket.assigned_to = org.id
+        WHERE Ticket.assigned_to = ?
+              AND Ticket.status = 'open'
+        ORDER BY Ticket.time DESC`;
 
-            const userRes = await this.core.db.run(
-                "SELECT organization_id FROM User WHERE id=?",
-                [currentUserId]
-            );
-            if (!userRes || userRes.length === 0) {
-                return;
-            }
-            const orgId = userRes[0].organization_id;
+      const assignedTickets = await this.core.db.run(sqlAssigned, [userOrgId]);
 
-            // 2) Query all open tickets assigned to this organisation
-            const tickets = await this.core.db.run(
-                `SELECT Ticket.id            AS ticket_id,
-                        Ticket.text          AS ticket_text,
-                        Ticket.time          AS submitted_at,
-                        Ticket.status        AS ticket_status,
-                        Ticket.assigned_to   AS assigned_org_id,
-                        Submitter.first_name AS submitter_first_name,
-                        Submitter.surname    AS submitter_surname,
-                        Submitter.username   AS submitter_username,
-                        Org.name             AS assigned_org_name
-                 FROM Ticket
-                 JOIN User  AS Submitter ON Submitter.id = Ticket.submitted_by
-                 LEFT JOIN Organization AS Org       ON Org.id = Ticket.assigned_to
-                 WHERE Ticket.status = 'open' AND Ticket.assigned_to = ?
-                 ORDER BY Ticket.time DESC`,
-                [orgId]
-            );
+      // Query 2 – tickets submitted by me, status = open or in_progress
+      const sqlMine = `
+        SELECT Ticket.*, 
+               submitter.first_name  AS submit_first_name,
+               submitter.surname     AS submit_surname,
+               submitter.username    AS submit_username,
+               org.name              AS assigned_org_name
+        FROM Ticket
+        JOIN   User submitter         ON Ticket.submitted_by = submitter.id
+        LEFT  JOIN Organization org   ON Ticket.assigned_to = org.id
+        WHERE Ticket.submitted_by = ?
+              AND (Ticket.status = 'open' OR Ticket.status = 'in_progress')
+        ORDER BY Ticket.time DESC`;
 
-            // 3) Mount the widget HTML/CSS
-            this.mountWidget(tickets);
-        } catch (err) {
-            console.error("SidebarTicketList plugin error", err);
+      const myTickets = await this.core.db.run(sqlMine, [userId]);
+
+      // Build static widget HTML
+      const html = `
+        <div class="ticket-sidebar-widget">
+          <h2>${this.core.translate('Tickets')}</h2>
+
+          <div class="section-assigned">
+            <h3>${this.core.translate('Assigned to my organization')}</h3>
+            <ul class="ticket-list" id="assigned-list"></ul>
+          </div>
+
+          <div class="section-mine">
+            <h3>${this.core.translate('My tickets')}</h3>
+            <ul class="ticket-list" id="my-list"></ul>
+          </div>
+        </div>`;
+
+      const css = `
+        .ticket-sidebar-widget h2 {
+          margin: 4px 0 10px 0;
         }
-    }
-
-    mountWidget(tickets) {
-        const html = `
-            <div class="ticket-sidebar-widget">
-                <h2 class="title">Open Tickets Assigned To Us</h2>
-                <div class="tickets-container">
-                    ${tickets && tickets.length ? tickets.map(t => this.renderTicketItem(t)).join("") : "<p class=\"empty\">No open tickets assigned.</p>"}
-                </div>
-            </div>
-        `;
-
-        const css = `
-            .ticket-sidebar-widget {
-                font-family: Arial, sans-serif;
-                color: var(--text-color);
-            }
-            .title {
-                font-size: 1.1rem;
-                margin: 0 0 0.5rem 0;
-            }
-            .tickets-container {
-                display: flex;
-                flex-direction: column;
-                gap: 0.3rem;
-            }
-            .ticket-item {
-                padding: 0.4rem 0.5rem;
-                background: var(--highlight-ticket-bg-color);
-                border-radius: 4px;
-                cursor: pointer;
-            }
-            .ticket-item:hover {
-                opacity: 0.85;
-            }
-            .ticket-header {
-                font-weight: bold;
-                margin-bottom: 0.2rem;
-            }
-            .ticket-meta {
-                font-size: 0.8rem;
-            }
-            .empty {
-                font-style: italic;
-                font-size: 0.9rem;
-            }
-        `;
-
-        this.shadowRoot = this.core.mount("side_bar", html, css);
-        if (!this.shadowRoot) return;
-
-        // Attach click listeners for each item
-        const items = this.shadowRoot.querySelectorAll(".ticket-item");
-        items.forEach(item => {
-            item.addEventListener("click", e => {
-                const ticketId = e.currentTarget.dataset.ticketId;
-                if (ticketId) {
-                    this.core.route("ticket_overview", parseInt(ticketId, 10));
-                }
-            });
-        });
-    }
-
-    renderTicketItem(t) {
-        const submittedDate = new Date(t.submitted_at).toLocaleString();
-        const submitter = `${t.submitter_first_name} ${t.submitter_surname} (@${t.submitter_username})`;
-        const assignedOrg = t.assigned_org_name ? t.assigned_org_name : "None";
-        return `
-            <div class="ticket-item" data-ticket-id="${t.ticket_id}">
-                <div class="ticket-header">Ticket #${t.ticket_id}: ${this.escapeHtml(t.ticket_text)}</div>
-                <div class="ticket-meta">Submitted: ${submittedDate}</div>
-                <div class="ticket-meta">By: ${this.escapeHtml(submitter)}</div>
-                <div class="ticket-meta">Assigned to: ${this.escapeHtml(assignedOrg)}</div>
-            </div>
-        `;
-    }
-
-    // Basic HTML escaping to avoid breaking the widget
-    escapeHtml(str) {
-        return String(str)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/\"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-    }
-
-    // Destructor if core supports plugin destruction in future
-    destroy() {
-        if (this.shadowRoot && this.shadowRoot.host) {
-            this.shadowRoot.host.remove();
+        .ticket-sidebar-widget h3 {
+          margin: 10px 0 4px 0;
+          font-size: 17px;
         }
+        ul.ticket-list {
+          list-style: none;
+          padding: 0;
+          margin: 0 0 12px 0;
+        }
+        li.ticket-item {
+          border-bottom: 1px solid #ccc;
+          padding: 6px 4px;
+          cursor: pointer;
+        }
+        li.ticket-item:hover {
+          background-color: var(--highlight-ticket-bg-color);
+        }
+        span.ticket-id {
+          font-weight: bold;
+        }
+        span.ticket-text {
+          display: block;
+          margin-left: 4px;
+        }
+        span.meta {
+          font-size: 0.8em;
+          color: #444;
+        }`;
+
+      this.shadowRoot = this.core.mount('side_bar', html, css);
+
+      // Populate both lists
+      this.populateList(this.shadowRoot.getElementById('assigned-list'), assignedTickets);
+      this.populateList(this.shadowRoot.getElementById('my-list'), myTickets);
+    } catch (err) {
+      console.error('TicketSidebarWidget init error', err);
     }
+  }
+
+  populateList(ulElement, tickets) {
+    tickets.forEach((t) => {
+      const li = document.createElement('li');
+      li.className = 'ticket-item';
+
+      const ticketIdText = `${this.core.translate('Ticket #')}${t.id}`;
+      const submittedDate = new Date(t.time).toLocaleString();
+      const submittedByText = `${t.submit_first_name} ${t.submit_surname} (@${t.submit_username})`;
+      const assignedOrgText = t.assigned_org_name || this.core.translate('None');
+
+      // Compose ticket block
+      li.innerHTML = `
+        <span class="ticket-id">${ticketIdText}</span>
+        <span class="ticket-text">${t.text}</span>
+        <span class="meta">${this.core.translate('Submitted')}: ${submittedDate} · ${submittedByText}</span><br/>
+        <span class="meta">${this.core.translate('Assigned to')}: ${assignedOrgText}</span>`;
+
+      li.addEventListener('click', () => {
+        this.core.route('ticket_overview', t.id);
+      });
+
+      ulElement.appendChild(li);
+    });
+  }
 }

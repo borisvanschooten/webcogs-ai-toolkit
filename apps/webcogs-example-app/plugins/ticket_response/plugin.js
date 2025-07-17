@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -21,10 +21,18 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
+function core.translate(string) - Translate a string into the user's language.
+
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
 - async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
+
+## Additional core functions
+
+core.getUserId() - get ID of logged in user
+core.getUserRole() - get role of logged in user (user, developer, or admin)
+async core.getOrganizations() - get all Organization records
 
 ## available core.mount locations
 
@@ -39,13 +47,19 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible. Do not override the styles in the CSS classes you use, use them as-is.  You can assume they are available to any widgets you mount.
 
 ## General guidelines
 
 Widgets should always display a title.
 
-If showing a user's, ticket's or responses's organization, show the organisation name and not the organization ID.
+If showing an organization, always show the organisation name and not the organization ID.
+
+Users should be shown like this: first_name surname (@username)
+
+Ticket should be shown like this: Ticket #ticket_id
+
+This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
 
 
 ## CSS definitions
@@ -53,13 +67,81 @@ If showing a user's, ticket's or responses's organization, show the organisation
 :root {
   --text-color: #000;
   --main-bg-color: #fff;
-  --nav_bar-bg-color: #eee;
-  --top_menu-bg-color: #222;
-  --top-menu-text-color: #fff;
-  --button-bg-color: #aaf;
+  --button-bg-color: #bbf;
   --button-text-color: #006;
+  --highlight-ticket-bg-color: #fcc;
+  --mainmenu-item-selected-bg-color: #66f;
 }
 
+\/* Use UL/LI with the following classes for mainmenu *\/
+ul.mainmenu {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  background-color: #222;
+  margin: 8px;
+}
+li.mainmenu-item {
+  cursor: pointer;
+  padding: 10px 5px;
+  user-select: none;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+    ul.mainmenu {
+        display: block;
+        height: auto;
+    }
+}
+
+span.logged-in-user {
+  font-size: 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+
+\/* Use the organization-avatar styles to add an avatar to each organization *\/
+div.organization-avatar {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+\/* Avatar variant for null organization *\/
+div.organization-avatar.id-none {
+  background-color: #eee;
+}
+\/* Avatar variants numbered "id-1" through "id-6" *\/
+div.organization-avatar.id-1 {
+  background-color: #f84;
+}
+div.organization-avatar.id-2 {
+  background-color: #fe4;
+}
+div.organization-avatar.id-3 {
+  background-color: #0f0;
+}
+div.organization-avatar.id-4 {
+  background-color: #2df;
+}
+div.organization-avatar.id-5 {
+  background-color: #66f;
+}
+div.organization-avatar.id-6 {
+  background-color: #f4f;
+}
+
+input[type="text"], input[type="email"] {
+  width: 100%;
+}
+select {
+  background-color: var(--button-bg-color);
+  font-size: 18px;
+}
+pre {
+  white-space: pre-wrap;
+}
 
 ## SQL table definitions
 
@@ -79,8 +161,7 @@ CREATE TABLE User (
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     organization_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    status TEXT NOT NULL
+    role TEXT NOT NULL
 );
 
 -- Ticket status is same as status of last response
@@ -108,187 +189,181 @@ CREATE TABLE Response (
 @webcogs_user_prompt
 Show the fields of a particular ticket, with a large area for the ticket text. The ticket ID is passed as the second parameter of the constructor. All responses to this ticket should be shown below the ticket. Below that, show a form for creating a new response, with the response text in a textarea, the response status in a multiple choice field, and assigned_to as a multiple choice field with as choices '(unchanged)', and the existing vendor organizations.  Statuses can be: '(unchanged)', open, in_progress, fixed, not_fixed. Add a submit button to submit the response. If a response is submitted, add a response record. Only set text if the text is not empty. Only set status and assigned_to if not unchanged.  Also update the ticket record with status and assigned_to if not unchanged. Then route back to ticket_response.
 @webcogs_end_prompt_section*/
-export class ticket_response {
-  constructor(core, ticket_id) {
+export class TicketDetails {
+  constructor(core, ticketId) {
     this.core = core;
-    this.ticket_id = ticket_id;
-    this.init();
+    this.ticketId = ticketId;
+    // mount skeleton immediately
+    const html = `<div id="ticket-details"></div>`;
+    const css = `
+      div#ticket-details { color: var(--text-color); background: var(--main-bg-color); padding: 15px; }
+      pre.ticket-text { background: #f9f9f9; padding: 10px; border: 1px solid #ccc; max-height: 300px; overflow: auto; }
+      div.response { border-top: 1px solid #ccc; padding: 8px 0; }
+      form#response-form textarea { width: 100%; }
+      form#response-form select { margin-top: 4px; }
+      form#response-form button { margin-top: 8px; background: var(--button-bg-color); color: var(--button-text-color); }
+    `;
+    this.shadowRoot = this.core.mount('main', html, css);
+    this.loadAndRender();
   }
 
-  async init() {
-    // Load all data we need from DB
-    const db = this.core.db;
-
-    // Fetch ticket
-    const ticketArr = await db.run("SELECT * FROM Ticket WHERE id=?", [this.ticket_id]);
+  async loadAndRender() {
+    // fetch ticket
+    const ticketArr = await this.core.db.run("SELECT * FROM Ticket WHERE id=?", [this.ticketId]);
     if (!ticketArr || ticketArr.length === 0) {
-      this.showError(`Ticket #${this.ticket_id} not found.`);
+      this.shadowRoot.getElementById('ticket-details').innerHTML = this.core.translate('Ticket not found.');
       return;
     }
     const ticket = ticketArr[0];
 
-    // Fetch submitting user and their organisation
-    const submitterArr = await db.run("SELECT * FROM User WHERE id=?", [ticket.submitted_by]);
-    const submitter = submitterArr && submitterArr.length ? submitterArr[0] : null;
-    let submitterOrgName = "";
-    if (submitter) {
-      const orgArr = await db.run("SELECT name FROM Organization WHERE id=?", [submitter.organization_id]);
-      if (orgArr && orgArr.length) submitterOrgName = orgArr[0].name;
-    }
+    // fetch submitted_by user
+    const userArr = await this.core.db.run("SELECT first_name, surname, username FROM User WHERE id=?", [ticket.submitted_by]);
+    const userDisp = (userArr && userArr.length)
+      ? `${userArr[0].first_name} ${userArr[0].surname} (@${userArr[0].username})`
+      : this.core.translate('Unknown');
 
-    // Fetch assigned organisation for ticket (if any)
-    let ticketAssignedOrgName = "";
+    // fetch assigned_to org if any
+    let assignedDisp = this.core.translate('Unassigned');
     if (ticket.assigned_to !== null && ticket.assigned_to !== undefined) {
-      const assignedOrgArr = await db.run("SELECT name FROM Organization WHERE id=?", [ticket.assigned_to]);
-      if (assignedOrgArr && assignedOrgArr.length) ticketAssignedOrgName = assignedOrgArr[0].name;
-    }
-
-    // Fetch responses
-    const responses = await db.run("SELECT * FROM Response WHERE ticket_id=? ORDER BY time ASC", [this.ticket_id]);
-    // Preload all organisations referenced by responses to avoid many queries
-    const orgCache = {};
-    const getOrgName = async (orgId) => {
-      if (orgId === null || orgId === undefined || orgId === "") return "";
-      if (orgCache[orgId]) return orgCache[orgId];
-      const orgArr = await db.run("SELECT name FROM Organization WHERE id=?", [orgId]);
-      const name = orgArr && orgArr.length ? orgArr[0].name : "";
-      orgCache[orgId] = name;
-      return name;
-    };
-    // Map responses to include org names
-    for (let resp of responses) {
-      resp.assigned_to_name = await getOrgName(resp.assigned_to);
-    }
-
-    // Fetch vendor organisations for selector
-    const vendorOrgs = await db.run("SELECT id, name FROM Organization WHERE role='vendor' ORDER BY name");
-
-    // Build the HTML interface
-    const htmlParts = [];
-    htmlParts.push(`<h2>Ticket #${ticket.id}</h2>`);
-    htmlParts.push(`<table>
-        <tr><th>Submitted by</th><td>${submitter ? submitter.username : ""} (${submitterOrgName})</td></tr>
-        <tr><th>Submitted at</th><td>${ticket.time}</td></tr>
-        <tr><th>Assigned to</th><td>${ticketAssignedOrgName}</td></tr>
-        <tr><th>Status</th><td>${ticket.status}</td></tr>
-      </table>`);
-
-    // Ticket text block
-    htmlParts.push(`<h3>Description</h3>`);
-    htmlParts.push(`<textarea readonly style="width:100%;min-height:120px;">${this.escapeHtml(ticket.text)}</textarea>`);
-
-    // Responses list
-    htmlParts.push(`<h3>Responses</h3>`);
-    if (responses.length === 0) {
-      htmlParts.push(`<p>No responses yet.</p>`);
-    } else {
-      htmlParts.push(`<div id="resp_list">`);
-      for (let resp of responses) {
-        htmlParts.push(`<div class="response-block">
-            <div class="response-meta">${resp.time} ${resp.status ? "- status: " + resp.status : ""} ${resp.assigned_to_name ? "- assigned to: " + resp.assigned_to_name : ""}</div>
-            ${resp.text ? `<pre class="response-text">${this.escapeHtml(resp.text)}</pre>` : ""}
-          </div>`);
+      const orgArr = await this.core.db.run("SELECT name FROM Organization WHERE id=?", [ticket.assigned_to]);
+      if (orgArr && orgArr.length) {
+        assignedDisp = orgArr[0].name;
       }
-      htmlParts.push(`</div>`);
     }
 
-    // New response form
-    htmlParts.push(`<h3>Add Response</h3>`);
-    htmlParts.push(`<div id="new_resp_form">
-        <label for="resp_text">Response text</label><br>
-        <textarea id="resp_text" style="width:100%;min-height:100px;"></textarea><br><br>
+    // fetch responses
+    const responses = await this.core.db.run("SELECT * FROM Response WHERE ticket_id=? ORDER BY time ASC", [this.ticketId]);
 
-        <label for="resp_status">Status:</label>
-        <select id="resp_status">
-          <option value="">(unchanged)</option>
-          <option value="open">open</option>
-          <option value="in_progress">in_progress</option>
-          <option value="fixed">fixed</option>
-          <option value="not_fixed">not_fixed</option>
-        </select>
-        <br><br>
+    // fetch vendor orgs for select list
+    const vendorOrgs = await this.core.db.run("SELECT id, name FROM Organization WHERE role='vendor' ORDER BY name ASC");
 
-        <label for="resp_assigned">Assigned to:</label>
-        <select id="resp_assigned">
-          <option value="">(unchanged)</option>
-          ${vendorOrgs.map(o => `<option value="${o.id}">${this.escapeHtml(o.name)}</option>`).join("\n")}
-        </select>
-        <br><br>
+    // Build responses HTML
+    let respHTML = '';
+    if (responses && responses.length) {
+      for (const resp of responses) {
+        let parts = [];
+        parts.push(`<div><strong>${this.core.translate('Time')}: </strong>${resp.time}</div>`);
+        if (resp.status) {
+          parts.push(`<div><strong>${this.core.translate('Status')}: </strong>${resp.status}</div>`);
+        }
+        if (resp.assigned_to) {
+          // try to resolve organization name
+          let orgName = resp.assigned_to;
+          const orgRes = await this.core.db.run("SELECT name FROM Organization WHERE id=?", [resp.assigned_to]);
+          if (orgRes && orgRes.length) orgName = orgRes[0].name;
+          parts.push(`<div><strong>${this.core.translate('Assigned to')}: </strong>${orgName}</div>`);
+        }
+        if (resp.text) {
+          parts.push(`<pre>${resp.text}</pre>`);
+        }
+        respHTML += `<div class="response">${parts.join('')}</div>`;
+      }
+    } else {
+      respHTML = `<div>${this.core.translate('No responses yet.')}</div>`;
+    }
 
-        <button id="resp_submit" style="background:var(--button-bg-color);color:var(--button-text-color);">Submit response</button>
-      </div>`);
+    // build options for status select
+    const statusOptions = ['unchanged', 'open', 'in_progress', 'fixed', 'not_fixed'].map(s => {
+      const disp = (s === 'unchanged') ? this.core.translate('(unchanged)') : s;
+      return `<option value="${s}">${disp}</option>`;
+    }).join('');
 
-    const css = `
-      h2,h3 { color: var(--text-color); }
-      table { border-collapse: collapse; margin-bottom: 10px; }
-      th { text-align: left; padding-right: 6px; }
-      textarea[readonly] { background: #f5f5f5; }
-      .response-block { border: 1px solid #ccc; padding: 6px; margin-bottom: 8px; background: #fafafa; }
-      .response-meta { font-size: 0.9em; color: #555; margin-bottom: 4px; }
-      pre.response-text { white-space: pre-wrap; }
+    // build options for assigned_to select
+    let assignOptions = `<option value="unchanged">${this.core.translate('(unchanged)')}</option>`;
+    if (vendorOrgs && vendorOrgs.length) {
+      for (const org of vendorOrgs) {
+        assignOptions += `<option value="${org.id}">${org.name}</option>`;
+      }
+    }
+
+    // Render all
+    const container = this.shadowRoot.getElementById('ticket-details');
+    container.innerHTML = `
+      <h2>${this.core.translate('Ticket')} #${this.ticketId}</h2>
+      <div>
+        <p><strong>${this.core.translate('Submitted by')}: </strong>${userDisp}</p>
+        <p><strong>${this.core.translate('Assigned to')}: </strong>${assignedDisp}</p>
+        <p><strong>${this.core.translate('Status')}: </strong>${ticket.status}</p>
+        <p><strong>${this.core.translate('Time')}: </strong>${ticket.time}</p>
+      </div>
+      <h3>${this.core.translate('Description')}</h3>
+      <pre class="ticket-text">${ticket.text}</pre>
+      <h3>${this.core.translate('Responses')}</h3>
+      <div id="responses-container">${respHTML}</div>
+      <h3>${this.core.translate('Add Response')}</h3>
+      <form id="response-form">
+        <label>${this.core.translate('Text')}</label><br>
+        <textarea id="resp-text" rows="5"></textarea><br>
+        <label>${this.core.translate('Status')}</label><br>
+        <select id="resp-status">${statusOptions}</select><br>
+        <label>${this.core.translate('Assigned to')}</label><br>
+        <select id="resp-assigned">${assignOptions}</select><br><br>
+        <button type="submit">${this.core.translate('Submit')}</button>
+      </form>
     `;
 
-    this.shadowRoot = this.core.mount('main', htmlParts.join('\n'), css);
-
-    // Attach submit handler
-    this.shadowRoot.getElementById('resp_submit').addEventListener('click', () => this.submitResponse());
+    // attach submit handler
+    const form = this.shadowRoot.getElementById('response-form');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleSubmit();
+    });
   }
 
-  escapeHtml(text) {
-    if (!text && text !== 0) return "";
-    return String(text)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
+  async handleSubmit() {
+    const text = this.shadowRoot.getElementById('resp-text').value.trim();
+    const statusSel = this.shadowRoot.getElementById('resp-status').value;
+    const assignSel = this.shadowRoot.getElementById('resp-assigned').value;
 
-  async submitResponse() {
-    const text = this.shadowRoot.getElementById('resp_text').value.trim();
-    const status = this.shadowRoot.getElementById('resp_status').value;
-    const assigned_to = this.shadowRoot.getElementById('resp_assigned').value;
+    const now = new Date().toISOString();
 
-    if (!text && !status && !assigned_to) {
-      alert('Please provide at least one field to submit a response.');
+    // Prepare dynamic insert for Response
+    let cols = ['ticket_id', 'time'];
+    let placeholders = ['?', '?'];
+    let vals = [this.ticketId, now];
+
+    if (text !== '') {
+      cols.push('text');
+      placeholders.push('?');
+      vals.push(text);
+    }
+    if (statusSel !== 'unchanged') {
+      cols.push('status');
+      placeholders.push('?');
+      vals.push(statusSel);
+    }
+    if (assignSel !== 'unchanged') {
+      cols.push('assigned_to');
+      placeholders.push('?');
+      vals.push(assignSel);
+    }
+
+    if (cols.length === 2) {
+      // Nothing to submit
       return;
     }
 
-    const cols = ['ticket_id', 'time'];
-    const vals = [this.ticket_id, new Date().toISOString()];
-
-    if (text) {
-      cols.push('text');
-      vals.push(text);
-    }
-    if (status) {
-      cols.push('status');
-      vals.push(status);
-    }
-    if (assigned_to) {
-      cols.push('assigned_to');
-      vals.push(assigned_to);
-    }
-
-    const placeholders = cols.map(() => '?').join(',');
-    const sql = `INSERT INTO Response (${cols.join(',')}) VALUES (${placeholders})`;
-
-    await this.core.db.run(sql, vals);
+    const insertSQL = `INSERT INTO Response (${cols.join(',')}) VALUES (${placeholders.join(',')})`;
+    await this.core.db.run(insertSQL, vals);
 
     // Update ticket if needed
-    if (status) {
-      await this.core.db.run('UPDATE Ticket SET status=? WHERE id=?', [status, this.ticket_id]);
+    let updClauses = [];
+    let updVals = [];
+    if (statusSel !== 'unchanged') {
+      updClauses.push('status=?');
+      updVals.push(statusSel);
     }
-    if (assigned_to) {
-      await this.core.db.run('UPDATE Ticket SET assigned_to=? WHERE id=?', [assigned_to, this.ticket_id]);
+    if (assignSel !== 'unchanged') {
+      updClauses.push('assigned_to=?');
+      updVals.push(assignSel);
+    }
+    if (updClauses.length > 0) {
+      updVals.push(this.ticketId);
+      const updSQL = `UPDATE Ticket SET ${updClauses.join(', ')} WHERE id=?`;
+      await this.core.db.run(updSQL, updVals);
     }
 
-    // Go back to ticket_response view (reload)
-    this.core.route('ticket_response', this.ticket_id);
-  }
-
-  showError(msg) {
-    const css = '';
-    this.core.mount('main', `<h2>Error</h2><p>${this.escapeHtml(msg)}</p>`, css);
+    // Route back
+    this.core.route('ticket_response', this.ticketId);
   }
 }

@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -21,6 +21,8 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
+function core.translate(string) - Translate a string into the user's language.
+
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
@@ -30,6 +32,7 @@ core.db is a SQLite compatible database object. It has the following functions:
 
 core.getUserId() - get ID of logged in user
 core.getUserRole() - get role of logged in user (user, developer, or admin)
+async core.getOrganizations() - get all Organization records
 
 ## available core.mount locations
 
@@ -44,7 +47,7 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible. Do not override the styles in the CSS classes you use, use them as-is.  You can assume they are available to any widgets you mount.
 
 ## General guidelines
 
@@ -56,20 +59,89 @@ Users should be shown like this: first_name surname (@username)
 
 Ticket should be shown like this: Ticket #ticket_id
 
+This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+
 
 ## CSS definitions
 
 :root {
   --text-color: #000;
   --main-bg-color: #fff;
-  --nav_bar-bg-color: #eee;
-  --top_menu-bg-color: #222;
-  --top-menu-text-color: #fff;
-  --button-bg-color: #aaf;
+  --button-bg-color: #bbf;
   --button-text-color: #006;
-  --highlight-ticket-bg-color: #eaa;
+  --highlight-ticket-bg-color: #fcc;
+  --mainmenu-item-selected-bg-color: #66f;
 }
 
+\/* Use UL/LI with the following classes for mainmenu *\/
+ul.mainmenu {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  background-color: #222;
+  margin: 8px;
+}
+li.mainmenu-item {
+  cursor: pointer;
+  padding: 10px 5px;
+  user-select: none;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+    ul.mainmenu {
+        display: block;
+        height: auto;
+    }
+}
+
+span.logged-in-user {
+  font-size: 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+
+\/* Use the organization-avatar styles to add an avatar to each organization *\/
+div.organization-avatar {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+\/* Avatar variant for null organization *\/
+div.organization-avatar.id-none {
+  background-color: #eee;
+}
+\/* Avatar variants numbered "id-1" through "id-6" *\/
+div.organization-avatar.id-1 {
+  background-color: #f84;
+}
+div.organization-avatar.id-2 {
+  background-color: #fe4;
+}
+div.organization-avatar.id-3 {
+  background-color: #0f0;
+}
+div.organization-avatar.id-4 {
+  background-color: #2df;
+}
+div.organization-avatar.id-5 {
+  background-color: #66f;
+}
+div.organization-avatar.id-6 {
+  background-color: #f4f;
+}
+
+input[type="text"], input[type="email"] {
+  width: 100%;
+}
+select {
+  background-color: var(--button-bg-color);
+  font-size: 18px;
+}
+pre {
+  white-space: pre-wrap;
+}
 
 ## SQL table definitions
 
@@ -89,8 +161,7 @@ CREATE TABLE User (
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     organization_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    status TEXT NOT NULL
+    role TEXT NOT NULL
 );
 
 -- Ticket status is same as status of last response
@@ -116,143 +187,210 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Write a plugin that shows four lists showing tickets, one for each possible value of ticket status: open, in_progress, fixed, not_fixed.  Lists should be shown one below the other.  Highlight items that are assigned to the logged in user's organization.  Items in the lists should be descendingly ordered by date. The ticket text should be shown in a large area. Each ticket row should also show the username that issued the ticket, the organization name of the user, and the date. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID. Do not use jquery.
+Write a plugin that shows a list showing tickets. It has two additional constructor parameters: status and sort_order.  Status indicates which status to show; default is "open". Sort_order is one of: date, organization; default is "date".  Date sort order should sort the list descendingly.  Organization sort order refers to the organization a ticket is assigned to, with not assigned tickets at the top. If sort order is organization, order by date within each organisation, and show the name of the organization above the first item.
+
+Above the list should be selectors for data and sort order.  If selected, route to ticketadmin with as parameters the selector values.
+
+The ticket text should be shown in a large area. Each ticket row should also show the username that issued the ticket, the organization name of the user, the organization it was assigned to, and the date. Show an organization-avatar for the assigned to organization at the left of each ticket. Use organisation ID to cycle through the id-, id-2 variant classes. When you click on a ticket, it should route to "ticket_overview" with as parameter the ticket ID, except when you click on the user, which should route to "user_overview" with as parameter the user ID.
 
 @webcogs_end_prompt_section*/
-// TicketStatusLists.js
-export default class TicketStatusLists {
-  constructor(core) {
-    this.core = core;
-    this.statuses = [
-      { key: "open", label: "Open" },
-      { key: "in_progress", label: "In Progress" },
-      { key: "fixed", label: "Fixed" },
-      { key: "not_fixed", label: "Not Fixed" }
-    ];
-    // begin initialization (async detached)
-    this.init();
-  }
-
-  async init() {
-    // Identify logged in user's organisation
-    const userId = this.core.getUserId();
-    const orgRows = await this.core.db.run(
-      "SELECT organization_id FROM User WHERE id=?",
-      [userId]
-    );
-    this.loggedOrgId = orgRows.length ? orgRows[0].organization_id : null;
-
-    // fetch tickets grouped by status
-    const ticketData = {};
-    for (const statusObj of this.statuses) {
-      ticketData[statusObj.key] = await this.fetchTicketsByStatus(statusObj.key);
+export class TicketList {
+    constructor(core, status = "open", sort_order = "date") {
+        this.core = core;
+        this.status = status || "open";
+        this.sort_order = sort_order || "date";
+        // Begin building UI
+        this.init();
     }
 
-    const { html, css } = this.buildMarkup(ticketData);
+    async init() {
+        // Mount main widget
+        const html = `
+            <div class="ticket-list-widget">
+                <h2>${this.core.translate("Tickets")}</h2>
+                <div class="ticket-filters">
+                    <label>
+                        ${this.core.translate("Status")}: 
+                        <select id="status-select">
+                            <option value="open">${this.core.translate("open")}</option>
+                            <option value="in_progress">${this.core.translate("in_progress")}</option>
+                            <option value="fixed">${this.core.translate("fixed")}</option>
+                            <option value="not_fixed">${this.core.translate("not_fixed")}</option>
+                        </select>
+                    </label>
+                    <label>
+                        ${this.core.translate("Sort by")}: 
+                        <select id="sort-select">
+                            <option value="date">${this.core.translate("date")}</option>
+                            <option value="organization">${this.core.translate("organization")}</option>
+                        </select>
+                    </label>
+                </div>
+                <div id="ticket-container"></div>
+            </div>
+        `;
+        const css = `
+            .ticket-filters {
+                margin-bottom: 15px;
+            }
+            .ticket-row {
+                border: 1px solid #ccc;
+                padding: 10px;
+                margin-bottom: 10px;
+                display: flex;
+                gap: 10px;
+                cursor: pointer;
+            }
+            .ticket-text {
+                flex: 1;
+                white-space: pre-wrap;
+            }
+            .ticket-meta {
+                color: var(--text-color);
+                font-size: 14px;
+            }
+            .org-header {
+                font-weight: bold;
+                margin-top: 20px;
+            }
+            .user-link {
+                color: blue;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+        `;
+        this.shadow = this.core.mount("main", html, css);
+        this.statusSelect = this.shadow.getElementById("status-select");
+        this.sortSelect = this.shadow.getElementById("sort-select");
+        // set initial values
+        this.statusSelect.value = this.status;
+        this.sortSelect.value = this.sort_order;
 
-    this.shadowRoot = this.core.mount("main", html, css);
+        // Event listeners
+        this.statusSelect.addEventListener("change", () => {
+            this.core.route("ticketadmin", this.statusSelect.value, this.sortSelect.value);
+        });
+        this.sortSelect.addEventListener("change", () => {
+            this.core.route("ticketadmin", this.statusSelect.value, this.sortSelect.value);
+        });
 
-    this.attachEventHandlers();
-  }
+        // Load data and render
+        await this.loadAndRender();
+    }
 
-  async fetchTicketsByStatus(status) {
-    const rows = await this.core.db.run(
-      `SELECT Ticket.id               AS ticket_id,
-              Ticket.text             AS ticket_text,
-              Ticket.time             AS ticket_time,
-              Ticket.assigned_to      AS assigned_to,
-              User.id                 AS user_id,
-              User.username           AS username,
-              User.first_name         AS first_name,
-              User.surname            AS surname,
-              Organization.name       AS org_name
-       FROM Ticket
-       JOIN User          ON Ticket.submitted_by = User.id
-       JOIN Organization  ON User.organization_id = Organization.id
-       WHERE Ticket.status = ?
-       ORDER BY Ticket.time DESC`,
-      [status]
-    );
-    return rows;
-  }
+    async loadAndRender() {
+        const tickets = await this.fetchTickets();
+        this.renderTickets(tickets);
+    }
 
-  escapeHtml(text) {
-    if (typeof text !== "string") return text;
-    return text
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/\"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
+    async fetchTickets() {
+        // Query tickets with joined data
+        const sql = `SELECT Ticket.id AS ticket_id, Ticket.text AS ticket_text, Ticket.time AS ticket_time, Ticket.assigned_to AS assigned_org_id, 
+                            User.id AS user_id, User.username, User.first_name, User.surname,
+                            UOrg.name AS user_org_name,
+                            AOrg.name AS assigned_org_name
+                     FROM Ticket
+                     JOIN User ON User.id = Ticket.submitted_by
+                     JOIN Organization UOrg ON UOrg.id = User.organization_id
+                     LEFT JOIN Organization AOrg ON AOrg.id = Ticket.assigned_to
+                     WHERE Ticket.status = ?`;
+        const rows = await this.core.db.run(sql, [this.status]);
+        // Sort according to sort_order
+        if (this.sort_order === "date") {
+            // Descending by time
+            rows.sort((a, b) => new Date(b.ticket_time) - new Date(a.ticket_time));
+        } else {
+            // Group by assigned organization name (null first). Within each group, date desc.
+            rows.sort((a, b) => {
+                const orgA = a.assigned_org_name || ""; // Empty string sorts before letters
+                const orgB = b.assigned_org_name || "";
+                if (orgA < orgB) return -1;
+                if (orgA > orgB) return 1;
+                // same org - date desc
+                return new Date(b.ticket_time) - new Date(a.ticket_time);
+            });
+        }
+        return rows;
+    }
 
-  buildMarkup(ticketData) {
-    let html = `
-      <div class="ticket-status-lists">
-        <h1>Tickets by Status</h1>
-        ${this.statuses
-          .map((s) => this.buildSectionMarkup(s, ticketData[s.key]))
-          .join("")}
-      </div>`;
+    renderTickets(rows) {
+        const container = this.shadow.getElementById("ticket-container");
+        container.innerHTML = "";
+        let lastOrgKey = null;
+        rows.forEach(row => {
+            const orgKey = row.assigned_org_name || "__NONE__";
+            if (this.sort_order === "organization" && orgKey !== lastOrgKey) {
+                // Insert header
+                const header = document.createElement("div");
+                header.className = "org-header";
+                header.textContent = row.assigned_org_name ? row.assigned_org_name : this.core.translate("Not assigned");
+                container.appendChild(header);
+                lastOrgKey = orgKey;
+            }
 
-    let css = `
-      .ticket-status-lists { color: var(--text-color); background: var(--main-bg-color); padding: 10px; }
-      .ticket-section { margin-bottom: 30px; }
-      .ticket-section h2 { margin: 0 0 10px 0; }
-      .ticket-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 8px; cursor: pointer; background: var(--main-bg-color); transition: background 0.2s ease-in-out; }
-      .ticket-item.highlight { background: var(--highlight-ticket-bg-color); }
-      .ticket-header { font-size: 0.9em; color: #333; display: flex; flex-wrap: wrap; gap: 8px; }
-      .ticket-text { margin-top: 6px; white-space: pre-wrap; font-size: 1.05em; }
-      .user-link { color: blue; text-decoration: underline; cursor: pointer; }
-      .ticket-date { color: #666; }
-    `;
-    return { html, css };
-  }
+            const ticketRow = document.createElement("div");
+            ticketRow.className = "ticket-row";
+            // avatar box
+            const avatarDiv = document.createElement("div");
+            const avatarClass = this.getAvatarClass(row.assigned_org_id);
+            avatarDiv.className = `organization-avatar ${avatarClass}`;
+            ticketRow.appendChild(avatarDiv);
 
-  buildSectionMarkup(statusObj, tickets) {
-    const itemsHtml = tickets
-      .map((t) => {
-        const highlightClass =
-          this.loggedOrgId !== null && t.assigned_to === this.loggedOrgId
-            ? "highlight"
-            : "";
-        return `<div class="ticket-item ${highlightClass}" data-ticket-id="${t.ticket_id}">
-          <div class="ticket-header">
-            <span class="user-link" data-user-id="${t.user_id}">${this.escapeHtml(
-          `${t.first_name} ${t.surname} (@${t.username})`
-        )}</span>
-            <span class="ticket-date">${new Date(t.ticket_time).toLocaleString()}</span>
-            <span class="ticket-org">${this.escapeHtml(t.org_name)}</span>
-          </div>
-          <div class="ticket-text">${this.escapeHtml(t.ticket_text)}</div>
-        </div>`;
-      })
-      .join("");
+            // info container
+            const infoDiv = document.createElement("div");
+            infoDiv.style.flex = "1";
 
-    return `<div class="ticket-section" data-status="${statusObj.key}">
-      <h2>${statusObj.label}</h2>
-      ${itemsHtml || "<div>No tickets.</div>"}
-    </div>`;
-  }
+            // text
+            const textDiv = document.createElement("div");
+            textDiv.className = "ticket-text";
+            textDiv.textContent = row.ticket_text;
+            infoDiv.appendChild(textDiv);
 
-  attachEventHandlers() {
-    // Ticket clicks
-    this.shadowRoot.querySelectorAll('.ticket-item').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        // If user link clicked, ignore here (handled separately)
-        if (e.target.closest('.user-link')) return;
-        const ticketId = parseInt(el.getAttribute('data-ticket-id'), 10);
-        this.core.route('ticket_overview', ticketId);
-      });
-    });
+            // meta
+            const metaDiv = document.createElement("div");
+            metaDiv.className = "ticket-meta";
+            // user link
+            const userSpan = document.createElement("span");
+            userSpan.className = "user-link";
+            userSpan.textContent = `${row.first_name} ${row.surname} (@${row.username})`;
+            userSpan.addEventListener("click", e => {
+                e.stopPropagation();
+                this.core.route("user_overview", row.user_id);
+            });
+            metaDiv.appendChild(userSpan);
 
-    // User link clicks
-    this.shadowRoot.querySelectorAll('.user-link').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const userId = parseInt(el.getAttribute('data-user-id'), 10);
-        this.core.route('user_overview', userId);
-      });
-    });
-  }
+            // user org
+            const orgSpan = document.createElement("span");
+            orgSpan.textContent = ` - ${row.user_org_name}`;
+            metaDiv.appendChild(orgSpan);
+
+            // assigned org
+            const assignedSpan = document.createElement("span");
+            const assignedText = row.assigned_org_name ? row.assigned_org_name : this.core.translate("Not assigned");
+            assignedSpan.textContent = ` - ${assignedText}`;
+            metaDiv.appendChild(assignedSpan);
+
+            // date
+            const dateSpan = document.createElement("span");
+            const dateObj = new Date(row.ticket_time);
+            dateSpan.textContent = ` - ${dateObj.toLocaleString()}`;
+            metaDiv.appendChild(dateSpan);
+
+            infoDiv.appendChild(metaDiv);
+
+            ticketRow.appendChild(infoDiv);
+
+            ticketRow.addEventListener("click", () => {
+                this.core.route("ticket_overview", row.ticket_id);
+            });
+
+            container.appendChild(ticketRow);
+        });
+    }
+
+    getAvatarClass(orgId) {
+        if (!orgId) return "id-none";
+        const idx = (orgId % 6) || 6; // so 6 maps to 6 not 0
+        return `id-${idx}`;
+    }
 }

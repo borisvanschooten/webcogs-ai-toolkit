@@ -1,0 +1,274 @@
+[
+    {
+        "source": "Login",
+        "translation": "Inloggen"
+    },
+    {
+        "source": "Username",
+        "translation": "Gebruikersnaam"
+    },
+    {
+        "source": "Password",
+        "translation": "Wachtwoord"
+    },
+    {
+        "source": "Signup",
+        "translation": "Aanmelden"
+    },
+    {
+        "source": "Submit ticket",
+        "translation": "Stuur ticket in"
+    },
+    {
+        "source": "Tickets",
+        "translation": "Tickets"
+    },
+    {
+        "source": "Users",
+        "translation": "Gebruikers"
+    },
+    {
+        "source": "Stats",
+        "translation": "Statistieken"
+    },
+    {
+        "source": "Unknown user",
+        "translation": "Onbekende gebruiker"
+    },
+    {
+        "source": "Logout",
+        "translation": "Uitloggen"
+    },
+    {
+        "source": "Message",
+        "translation": "Bericht"
+    },
+    {
+        "source": "OK",
+        "translation": "OK"
+    },
+    {
+        "source": "Assigned to my organization",
+        "translation": "Toegewezen aan mijn organisatie"
+    },
+    {
+        "source": "My tickets",
+        "translation": "Mijn tickets"
+    },
+    {
+        "source": "Ticket #",
+        "translation": "Ticket #"
+    },
+    {
+        "source": "None",
+        "translation": "Geen"
+    },
+    {
+        "source": "Submitted",
+        "translation": "Ingediend"
+    },
+    {
+        "source": "Assigned to",
+        "translation": "Toegewezen aan"
+    },
+    {
+        "source": "Sign up",
+        "translation": "Aanmelden"
+    },
+    {
+        "source": "Email",
+        "translation": "E-mail"
+    },
+    {
+        "source": "First name",
+        "translation": "Voornaam"
+    },
+    {
+        "source": "Surname",
+        "translation": "Achternaam"
+    },
+    {
+        "source": "Organization",
+        "translation": "Organisatie"
+    },
+    {
+        "source": "Role",
+        "translation": "Rol"
+    },
+    {
+        "source": "User",
+        "translation": "Gebruiker"
+    },
+    {
+        "source": "Developer",
+        "translation": "Ontwikkelaar"
+    },
+    {
+        "source": "Submit",
+        "translation": "Indienen"
+    },
+    {
+        "source": "Select organization",
+        "translation": "Selecteer organisatie"
+    },
+    {
+        "source": "Submit a Ticket",
+        "translation": "Dien een ticket in"
+    },
+    {
+        "source": "Text",
+        "translation": "Tekst"
+    },
+    {
+        "source": "Please enter ticket text.",
+        "translation": "Voer alstublieft tickettekst in."
+    },
+    {
+        "source": "Ticket submitted.",
+        "translation": "Ticket ingediend."
+    },
+    {
+        "source": "Loading ticket",
+        "translation": "Ticket laden"
+    },
+    {
+        "source": "Ticket not found",
+        "translation": "Ticket niet gevonden"
+    },
+    {
+        "source": "Error loading ticket",
+        "translation": "Fout bij het laden van ticket"
+    },
+    {
+        "source": "Unknown organization",
+        "translation": "Onbekende organisatie"
+    },
+    {
+        "source": "Ticket",
+        "translation": "Ticket"
+    },
+    {
+        "source": "Submitted by",
+        "translation": "Ingediend door"
+    },
+    {
+        "source": "Time",
+        "translation": "Tijd"
+    },
+    {
+        "source": "Status",
+        "translation": "Status"
+    },
+    {
+        "source": "Ticket text",
+        "translation": "Tickettekst"
+    },
+    {
+        "source": "Responses",
+        "translation": "Antwoorden"
+    },
+    {
+        "source": "No responses yet",
+        "translation": "Nog geen antwoorden"
+    },
+    {
+        "source": "Respond",
+        "translation": "Beantwoorden"
+    },
+    {
+        "source": "Ticket not found.",
+        "translation": "Ticket niet gevonden."
+    },
+    {
+        "source": "Unknown",
+        "translation": "Onbekend"
+    },
+    {
+        "source": "Unassigned",
+        "translation": "Niet toegewezen"
+    },
+    {
+        "source": "No responses yet.",
+        "translation": "Nog geen antwoorden."
+    },
+    {
+        "source": "(unchanged)",
+        "translation": "(ongewijzigd)"
+    },
+    {
+        "source": "Description",
+        "translation": "Beschrijving"
+    },
+    {
+        "source": "Add Response",
+        "translation": "Voeg antwoord toe"
+    },
+    {
+        "source": "Tickets by status & organization",
+        "translation": "Tickets op status & organisatie"
+    },
+    {
+        "source": "Tickets vs Responses - last 30 days",
+        "translation": "Tickets vs Antwoorden - laatste 30 dagen"
+    },
+    {
+        "source": "open",
+        "translation": "open"
+    },
+    {
+        "source": "in_progress",
+        "translation": "bezig"
+    },
+    {
+        "source": "fixed",
+        "translation": "opgelost"
+    },
+    {
+        "source": "not_fixed",
+        "translation": "niet_opgelost"
+    },
+    {
+        "source": "Sort by",
+        "translation": "Sorteer op"
+    },
+    {
+        "source": "date",
+        "translation": "datum"
+    },
+    {
+        "source": "organization",
+        "translation": "organisatie"
+    },
+    {
+        "source": "Not assigned",
+        "translation": "Niet toegewezen"
+    },
+    {
+        "source": "User not found.",
+        "translation": "Gebruiker niet gevonden."
+    },
+    {
+        "source": "User Profile",
+        "translation": "Gebruikersprofiel"
+    },
+    {
+        "source": "Edit",
+        "translation": "Bewerken"
+    },
+    {
+        "source": "Edit User Profile",
+        "translation": "Bewerk gebruikersprofiel"
+    },
+    {
+        "source": "Cancel",
+        "translation": "Annuleren"
+    },
+    {
+        "source": "Loading...",
+        "translation": "Laden..."
+    },
+    {
+        "source": "All users",
+        "translation": "Alle gebruikers"
+    }
+]

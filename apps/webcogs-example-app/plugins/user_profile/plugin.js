@@ -187,136 +187,158 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Write a plugin that shows a single user in a table with two columns, keys left and values right. The user ID is passed as a custom parameter to the constructor.  Below the user table should be the list of tickets submitted by the user. When you click on a ticket, route to ticket_overview with the ticket ID as custom parameter. Below that is a list of tickets assigned to the user's organization.  Open tickets should be highlighted in both lists.
-
-
+Create a widget that has a view mode and an edit mode, set via a constructor custom boolean parameter 'edit_mode'. In view mode, show the currently logged in user record in a table with two columns, keys left and values right, and show an edit button. which routes to user_profile with edit_mode=true.  In edit mode, show a form where you can edit email, first_name, surname, a dropdown showing organization names for selecting the organization_id, and a dropdown for selecting role (user, developer).  A submit button updates the filled-in user fields and routes to user_profile. A cancel button returns to view mode.
 @webcogs_end_prompt_section*/
-export class UserProfileTicketsPlugin {
-    constructor(core, userId) {
+export class UserProfile {
+    constructor(core, edit_mode = false) {
         this.core = core;
-        this.userId = userId;
-        // fire and forget – no need to await here because we cannot make
-        // constructor async.  Call an async init method.
+        this.edit_mode = !!edit_mode;
+        // We will hold user and org data
+        this.user = null;
+        this.organizations = [];
+        // Start rendering process
         this.init();
     }
 
     async init() {
-        const t = (str) => this.core.translate(str);
+        // Load user and organizations first
+        const userId = this.core.getUserId();
+        // Fetch user record
+        const users = await this.core.db.run("SELECT * FROM User WHERE id=?", [userId]);
+        if (users && users.length) {
+            this.user = users[0];
+        } else {
+            // User not found, nothing to show
+            this.user = null;
+        }
+        // Fetch organizations list
+        this.organizations = await this.core.getOrganizations();
 
-        // 1. Fetch user info
-        const userRows = await this.core.db.run("SELECT * FROM User WHERE id=?", [this.userId]);
-        if (!userRows || !userRows.length) {
-            // user not found, mount an error message and bail out
-            const errorHtml = `<h2>${t("User not found")}</h2>`;
-            this.core.mount("main", errorHtml, "");
+        // Render view
+        if (this.edit_mode) {
+            this.renderEditMode();
+        } else {
+            this.renderViewMode();
+        }
+    }
+
+    mountWidget(html) {
+        // Helper to mount and keep reference to root
+        if (this.shadow_root) {
+            // if already mounted, replace innerHTML
+            this.shadow_root.innerHTML = html;
             return;
         }
-        const user = userRows[0];
+        this.shadow_root = this.core.mount('main', html, "");
+    }
 
-        // 2. Fetch organisation
-        let orgName = t("Unknown organisation");
-        if (user.organization_id !== null) {
-            const orgRows = await this.core.db.run("SELECT name FROM Organization WHERE id=?", [user.organization_id]);
-            if (orgRows && orgRows.length) {
-                orgName = orgRows[0].name;
-            }
+    renderViewMode() {
+        if (!this.user) {
+            this.mountWidget(`<div>${this.core.translate('User not found.')}</div>`);
+            return;
         }
-
-        // 3. Fetch user submitted tickets
-        const submittedTickets = await this.core.db.run(
-            "SELECT id, status FROM Ticket WHERE submitted_by=? ORDER BY id DESC",
-            [this.userId]
-        );
-
-        // 4. Fetch organisation tickets (assigned to org)
-        let orgTickets = [];
-        if (user.organization_id !== null) {
-            orgTickets = await this.core.db.run(
-                "SELECT id, status FROM Ticket WHERE assigned_to=? ORDER BY id DESC",
-                [user.organization_id]
-            );
-        }
-
-        // 5. Compose HTML
-        const userDisplay = `${user.first_name} ${user.surname} (@${user.username})`;
-
-        const userTableRows = [
-            { k: t("User"), v: userDisplay },
-            { k: t("Email"), v: user.email },
-            { k: t("Organisation"), v: orgName },
-            { k: t("Role"), v: user.role }
-        ].map(row => `<tr><td><strong>${row.k}</strong></td><td>${row.v}</td></tr>`).join("\n");
-
-        // Helper to render ticket list items
-        const renderTicketItem = (ticket) => {
-            const openClass = ticket.status === "open" ? "open" : "";
-            return `<li class="ticket-list-item ${openClass}" data-id="${ticket.id}">${t("Ticket")} #${ticket.id}</li>`;
-        };
-
-        const submittedTicketsHtml = submittedTickets.length
-            ? submittedTickets.map(renderTicketItem).join("\n")
-            : `<li>${t("No tickets")}</li>`;
-
-        const orgTicketsHtml = orgTickets.length
-            ? orgTickets.map(renderTicketItem).join("\n")
-            : `<li>${t("No tickets")}</li>`;
+        const rows = [
+            ['ID', this.user.id],
+            ['Username', this.user.username],
+            ['Email', this.user.email],
+            ['First name', this.user.first_name],
+            ['Surname', this.user.surname],
+            ['Organization', this.getOrganizationName(this.user.organization_id)],
+            ['Role', this.user.role]
+        ];
+        let tableRowsHtml = rows.map(r => `<tr><td><strong>${this.core.translate(r[0])}</strong></td><td>${this.escapeHtml(String(r[1]))}</td></tr>`).join('');
 
         const html = `
-            <div class="user-profile-widget">
-                <h2>${t("User details")}</h2>
-
-                <table class="user-table">
-                    <tbody>
-                        ${userTableRows}
-                    </tbody>
-                </table>
-
-                <h3>${t("Tickets submitted by user")}</h3>
-                <ul class="ticket-list submitted-tickets">
-                    ${submittedTicketsHtml}
-                </ul>
-
-                <h3>${t("Tickets assigned to organisation")}</h3>
-                <ul class="ticket-list org-tickets">
-                    ${orgTicketsHtml}
-                </ul>
+            <div>
+                <h2>${this.core.translate('User Profile')}</h2>
+                <table>${tableRowsHtml}</table>
+                <br />
+                <button id="edit-btn">${this.core.translate('Edit')}</button>
             </div>
         `;
-
-        const css = `
-            h2, h3 { color: var(--text-color); }
-            table.user-table {
-                border-collapse: collapse;
-                width: 100%;
-            }
-            table.user-table td {
-                padding: 4px 8px;
-                border-bottom: 1px solid #ccc;
-            }
-            ul.ticket-list {
-                list-style: none;
-                padding-left: 0;
-            }
-            li.ticket-list-item {
-                cursor: pointer;
-                padding: 6px 4px;
-                border-bottom: 1px solid #ddd;
-            }
-            li.ticket-list-item.open {
-                background-color: var(--highlight-ticket-bg-color);
-            }
-        `;
-
-        const shadowRoot = this.core.mount("main", html, css);
-
-        // 6. Add event listener for routing on click
-        shadowRoot.querySelectorAll('.ticket-list-item').forEach(li => {
-            li.addEventListener('click', (ev) => {
-                const ticketId = parseInt(ev.currentTarget.getAttribute('data-id'), 10);
-                if (!isNaN(ticketId)) {
-                    this.core.route('ticket_overview', ticketId);
-                }
-            });
+        this.mountWidget(html);
+        // Attach event listener
+        const editBtn = this.shadow_root.querySelector('#edit-btn');
+        editBtn.addEventListener('click', () => {
+            this.core.route('user_profile', true);
         });
+    }
+
+    renderEditMode() {
+        if (!this.user) {
+            this.mountWidget(`<div>${this.core.translate('User not found.')}</div>`);
+            return;
+        }
+        // Build organization options
+        const orgOptions = this.organizations.map(org => {
+            const selected = (org.id === this.user.organization_id) ? 'selected' : '';
+            return `<option value="${org.id}" ${selected}>${this.escapeHtml(org.name)}</option>`;
+        }).join('');
+        // Build role dropdown (only user, developer)
+        const roles = ['user', 'developer'];
+        const roleOptions = roles.map(r => {
+            const selected = (r === this.user.role) ? 'selected' : '';
+            return `<option value="${r}" ${selected}>${this.core.translate(r.charAt(0).toUpperCase() + r.slice(1))}</option>`;
+        }).join('');
+        const html = `
+            <div>
+                <h2>${this.core.translate('Edit User Profile')}</h2>
+                <form id="edit-form">
+                    <label>${this.core.translate('Email')}<br/>
+                        <input type="email" name="email" value="${this.escapeAttribute(this.user.email)}" required />
+                    </label><br/><br/>
+                    <label>${this.core.translate('First name')}<br/>
+                        <input type="text" name="first_name" value="${this.escapeAttribute(this.user.first_name)}" required />
+                    </label><br/><br/>
+                    <label>${this.core.translate('Surname')}<br/>
+                        <input type="text" name="surname" value="${this.escapeAttribute(this.user.surname)}" required />
+                    </label><br/><br/>
+                    <label>${this.core.translate('Organization')}<br/>
+                        <select name="organization_id">${orgOptions}</select>
+                    </label><br/><br/>
+                    <label>${this.core.translate('Role')}<br/>
+                        <select name="role">${roleOptions}</select>
+                    </label><br/><br/>
+                    <button type="submit">${this.core.translate('Submit')}</button>
+                    <button type="button" id="cancel-btn">${this.core.translate('Cancel')}</button>
+                </form>
+            </div>
+        `;
+        this.mountWidget(html);
+        // Attach event listeners
+        const form = this.shadow_root.querySelector('#edit-form');
+        const cancelBtn = this.shadow_root.querySelector('#cancel-btn');
+        cancelBtn.addEventListener('click', () => {
+            this.core.route('user_profile');
+        });
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const email = formData.get('email').trim();
+            const first_name = formData.get('first_name').trim();
+            const surname = formData.get('surname').trim();
+            const organization_id = parseInt(formData.get('organization_id'));
+            const role = formData.get('role');
+            // Update DB
+            await this.core.db.run(
+                "UPDATE User SET email=?, first_name=?, surname=?, organization_id=?, role=? WHERE id=?",
+                [email, first_name, surname, organization_id, role, this.user.id]
+            );
+            // route back to view mode
+            this.core.route('user_profile');
+        });
+    }
+
+    getOrganizationName(orgId) {
+        const org = this.organizations.find(o => o.id === orgId);
+        return org ? org.name : this.core.translate('Unknown');
+    }
+
+    escapeHtml(s) {
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    escapeAttribute(s) {
+        return this.escapeHtml(s).replace(/"/g, '&quot;');
     }
 }

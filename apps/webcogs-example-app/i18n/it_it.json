@@ -1,0 +1,282 @@
+[
+    {
+        "source": "Login",
+        "translation": "Accesso"
+    },
+    {
+        "source": "Username",
+        "translation": "Nome utente"
+    },
+    {
+        "source": "Password",
+        "translation": "Password"
+    },
+    {
+        "source": "Sign up",
+        "translation": "Registrati"
+    },
+    {
+        "source": "Submit ticket",
+        "translation": "Invia ticket"
+    },
+    {
+        "source": "Tickets",
+        "translation": "Ticket"
+    },
+    {
+        "source": "Users",
+        "translation": "Utenti"
+    },
+    {
+        "source": "Stats",
+        "translation": "Statistiche"
+    },
+    {
+        "source": "Unknown user",
+        "translation": "Utente sconosciuto"
+    },
+    {
+        "source": "Logout",
+        "translation": "Disconnetti"
+    },
+    {
+        "source": "Message",
+        "translation": "Messaggio"
+    },
+    {
+        "source": "OK",
+        "translation": "OK"
+    },
+    {
+        "source": "Assigned to my organization",
+        "translation": "Assegnato alla mia organizzazione"
+    },
+    {
+        "source": "My tickets",
+        "translation": "I miei ticket"
+    },
+    {
+        "source": "Ticket #",
+        "translation": "Ticket #"
+    },
+    {
+        "source": "None",
+        "translation": "Nessuno"
+    },
+    {
+        "source": "Submitted",
+        "translation": "Inviato"
+    },
+    {
+        "source": "Assigned to",
+        "translation": "Assegnato a"
+    },
+    {
+        "source": "Email",
+        "translation": "Email"
+    },
+    {
+        "source": "First name",
+        "translation": "Nome"
+    },
+    {
+        "source": "Surname",
+        "translation": "Cognome"
+    },
+    {
+        "source": "Organization",
+        "translation": "Organizzazione"
+    },
+    {
+        "source": "Role",
+        "translation": "Ruolo"
+    },
+    {
+        "source": "User",
+        "translation": "Utente"
+    },
+    {
+        "source": "Developer",
+        "translation": "Sviluppatore"
+    },
+    {
+        "source": "Submit",
+        "translation": "Invia"
+    },
+    {
+        "source": "Select organization",
+        "translation": "Seleziona organizzazione"
+    },
+    {
+        "source": "Submit a Ticket",
+        "translation": "Invia un ticket"
+    },
+    {
+        "source": "Text",
+        "translation": "Testo"
+    },
+    {
+        "source": "Please enter ticket text.",
+        "translation": "Per favore inserisci il testo del ticket."
+    },
+    {
+        "source": "Ticket submitted.",
+        "translation": "Ticket inviato."
+    },
+    {
+        "source": "Loading ticket",
+        "translation": "Caricamento ticket"
+    },
+    {
+        "source": "Ticket not found",
+        "translation": "Ticket non trovato"
+    },
+    {
+        "source": "Error loading ticket",
+        "translation": "Errore nel caricamento del ticket"
+    },
+    {
+        "source": "Unknown organization",
+        "translation": "Organizzazione sconosciuta"
+    },
+    {
+        "source": "Ticket",
+        "translation": "Ticket"
+    },
+    {
+        "source": "Submitted by",
+        "translation": "Inviato da"
+    },
+    {
+        "source": "Time",
+        "translation": "Tempo"
+    },
+    {
+        "source": "Status",
+        "translation": "Stato"
+    },
+    {
+        "source": "Ticket text",
+        "translation": "Testo del ticket"
+    },
+    {
+        "source": "Responses",
+        "translation": "Risposte"
+    },
+    {
+        "source": "No responses yet",
+        "translation": "Nessuna risposta ancora"
+    },
+    {
+        "source": "Respond",
+        "translation": "Rispondi"
+    },
+    {
+        "source": "Ticket not found.",
+        "translation": "Ticket non trovato."
+    },
+    {
+        "source": "Unknown",
+        "translation": "Sconosciuto"
+    },
+    {
+        "source": "Unassigned",
+        "translation": "Non assegnato"
+    },
+    {
+        "source": "No responses yet.",
+        "translation": "Nessuna risposta ancora."
+    },
+    {
+        "source": "(unchanged)",
+        "translation": "(immutato)"
+    },
+    {
+        "source": "Description",
+        "translation": "Descrizione"
+    },
+    {
+        "source": "Add Response",
+        "translation": "Aggiungi risposta"
+    },
+    {
+        "source": "Ticket overview",
+        "translation": "Panoramica del ticket"
+    },
+    {
+        "source": "Tickets by status and assigned organization",
+        "translation": "Ticket per stato e organizzazione assegnata"
+    },
+    {
+        "source": "Total",
+        "translation": "Totale"
+    },
+    {
+        "source": "Activity last 30 days",
+        "translation": "Attività ultime 30 giorni"
+    },
+    {
+        "source": "Org",
+        "translation": "Org"
+    },
+    {
+        "source": "Submitted tickets",
+        "translation": "Ticket inviati"
+    },
+    {
+        "source": "open",
+        "translation": "aperto"
+    },
+    {
+        "source": "in_progress",
+        "translation": "in corso"
+    },
+    {
+        "source": "fixed",
+        "translation": "risolto"
+    },
+    {
+        "source": "not_fixed",
+        "translation": "non risolto"
+    },
+    {
+        "source": "Sort by",
+        "translation": "Ordina per"
+    },
+    {
+        "source": "date",
+        "translation": "data"
+    },
+    {
+        "source": "organization",
+        "translation": "organizzazione"
+    },
+    {
+        "source": "Not assigned",
+        "translation": "Non assegnato"
+    },
+    {
+        "source": "User not found.",
+        "translation": "Utente non trovato."
+    },
+    {
+        "source": "User Profile",
+        "translation": "Profilo utente"
+    },
+    {
+        "source": "Edit",
+        "translation": "Modifica"
+    },
+    {
+        "source": "Edit User Profile",
+        "translation": "Modifica profilo utente"
+    },
+    {
+        "source": "Cancel",
+        "translation": "Annulla"
+    },
+    {
+        "source": "Organization role",
+        "translation": "Ruolo dell'organizzazione"
+    }
+]

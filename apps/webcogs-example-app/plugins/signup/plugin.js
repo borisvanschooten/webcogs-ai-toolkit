@@ -21,6 +21,9 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
+async function core.loadTranslations(language_code) - load translations for a particular language
+language_code - an ISO language code, for example "en_us" or "en_gb", or null for the default
+
 function core.translate(string) - Translate a string into the user's language.
 
 ## Core properties
@@ -60,6 +63,8 @@ Users should be shown like this: first_name surname (@username)
 Ticket should be shown like this: Ticket #ticket_id
 
 This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+
+Email form fields should be implemented using input type="email".
 
 
 ## CSS definitions
@@ -131,13 +136,27 @@ div.organization-avatar.id-5 {
 div.organization-avatar.id-6 {
   background-color: #f4f;
 }
-
-input[type="text"], input[type="email"] {
+input[type="text"], input[type="email"], input[type="password"] {
   width: 100%;
+  min-width: 300px;
 }
+
 select {
   background-color: var(--button-bg-color);
   font-size: 18px;
+  padding: 4px;
+}
+button {
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  padding: 4px 12px;
+  font-size: 18px;
+  cursor: pointer;
+}
+button.go-to-signup-screen {
+  border: none;
+  background-color: transparent;
+  font-weight: bold;
 }
 pre {
   white-space: pre-wrap;
@@ -187,40 +206,135 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Create a modal dialog widget that shows the text passed via the second plugin contructor parameter.  Show an OK button, which routes to hide_popup when clicked.
+Write a plugin that shows a signup form as a modal dialog. The form has the following fields: username, email, first_name, surname, and a dropdown for selecting organization and role (user or developer). A submit button routes to signed_up, with as custom parameter an object with the fields in it.  A cancel button should route back to login.  The constructor takes an extra string parameter 'error'. If defined, the error should be shown under the signup button. You have no access to core.db, so use core.getOrganizations instead.
 @webcogs_end_prompt_section*/
-export class ModalDialogPlugin {
-  constructor(core, dialogText="") {
+export class SignupModal {
+  constructor(core, error) {
     this.core = core;
-    this.dialogText = dialogText || "";
-    this._mountWidget();
-  }
-
-  _mountWidget() {
+    this.error = error;
+    // Build HTML for modal dialog
     const html = `
       <div>
-        <h3>${this.core.translate('Message')}</h3>
-        <p id="dialog-message"></p>
-        <button id="ok-button">${this.core.translate('OK')}</button>
+        <h2>${core.translate('Sign up')}</h2>
+        <form id="signup-form">
+          <label>
+            ${core.translate('Username')}<br>
+            <input type="text" id="signup-username" required />
+          </label><br><br>
+          <label>
+            ${core.translate('Email')}<br>
+            <input type="email" id="signup-email" required />
+          </label><br><br>
+          <label>
+            ${core.translate('First name')}<br>
+            <input type="text" id="signup-firstname" required />
+          </label><br><br>
+          <label>
+            ${core.translate('Surname')}<br>
+            <input type="text" id="signup-surname" required />
+          </label><br><br>
+          <label>
+            ${core.translate('Organization')}<br>
+            <select id="signup-organization" required>
+              <option value="" disabled selected>${core.translate('Loading...')}</option>
+            </select>
+          </label><br><br>
+          <label>
+            ${core.translate('Role')}<br>
+            <select id="signup-role" required>
+              <option value="user">${core.translate('User')}</option>
+              <option value="developer">${core.translate('Developer')}</option>
+            </select>
+          </label><br><br>
+          <div style="margin-top:10px;">
+            <button type="submit" id="signup-submit">${core.translate('Sign up')}</button>
+            <button type="button" id="signup-cancel">${core.translate('Cancel')}</button>
+          </div>
+          <div id="signup-error" style="color:red;margin-top:8px;min-height:20px;"></div>
+        </form>
       </div>
     `;
-    const css = ``; // No special styling, use default
 
-    // Mount in modal_dialog area
-    this.shadowRoot = this.core.mount('modal_dialog', html, css);
+    const css = ``; // No extra styles needed beyond defaults
 
-    // Set the message text safely
-    const msgElem = this.shadowRoot.getElementById('dialog-message');
-    if (msgElem) {
-      msgElem.textContent = this.core.translate(this.dialogText);
+    this.shadowRoot = core.mount('modal_dialog', html, css);
+
+    this.form = this.shadowRoot.getElementById('signup-form');
+    this.usernameInput = this.shadowRoot.getElementById('signup-username');
+    this.emailInput = this.shadowRoot.getElementById('signup-email');
+    this.firstnameInput = this.shadowRoot.getElementById('signup-firstname');
+    this.surnameInput = this.shadowRoot.getElementById('signup-surname');
+    this.organizationSelect = this.shadowRoot.getElementById('signup-organization');
+    this.roleSelect = this.shadowRoot.getElementById('signup-role');
+    this.errorDiv = this.shadowRoot.getElementById('signup-error');
+
+    if (this.error) {
+      this.errorDiv.textContent = this.error;
     }
 
-    // Attach event listener to OK button
-    const okBtn = this.shadowRoot.getElementById('ok-button');
-    if (okBtn) {
-      okBtn.addEventListener('click', () => {
-        this.core.route('hide_popup');
-      });
+    // Bind events
+    this.form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      this.handleSubmit();
+    });
+
+    const cancelBtn = this.shadowRoot.getElementById('signup-cancel');
+    cancelBtn.addEventListener('click', () => {
+      core.route('login');
+    });
+
+    // Load organizations asynchronously
+    this.loadOrganizations();
+  }
+
+  async loadOrganizations() {
+    try {
+      const organizations = await this.core.getOrganizations();
+      // Clear existing options
+      this.organizationSelect.innerHTML = '';
+      // Add a default disabled selected option
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.disabled = true;
+      defaultOpt.selected = true;
+      defaultOpt.textContent = this.core.translate('Select an organization');
+      this.organizationSelect.appendChild(defaultOpt);
+
+      // Populate organizations
+      for (const org of organizations) {
+        const opt = document.createElement('option');
+        opt.value = org.id;
+        opt.textContent = org.name; // Show name per guidelines
+        this.organizationSelect.appendChild(opt);
+      }
+    } catch (err) {
+      // Could not load orgs
+      this.organizationSelect.innerHTML = '';
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.disabled = true;
+      opt.selected = true;
+      opt.textContent = this.core.translate('Unable to load organizations');
+      this.organizationSelect.appendChild(opt);
     }
+  }
+
+  handleSubmit() {
+    const data = {
+      username: this.usernameInput.value.trim(),
+      email: this.emailInput.value.trim(),
+      first_name: this.firstnameInput.value.trim(),
+      surname: this.surnameInput.value.trim(),
+      organization_id: parseInt(this.organizationSelect.value, 10),
+      role: this.roleSelect.value
+    };
+    // Basic validation: ensure all fields filled
+    if (!data.username || !data.email || !data.first_name || !data.surname || isNaN(data.organization_id)) {
+      this.errorDiv.textContent = this.core.translate('Please fill in all fields');
+      return;
+    }
+
+    // Route to signed_up with data
+    this.core.route('signed_up', data);
   }
 }

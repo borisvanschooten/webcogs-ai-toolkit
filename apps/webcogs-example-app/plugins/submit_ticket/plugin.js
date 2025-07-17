@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -21,6 +21,8 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
+function core.translate(string) - Translate a string into the user's language.
+
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
@@ -30,6 +32,7 @@ core.db is a SQLite compatible database object. It has the following functions:
 
 core.getUserId() - get ID of logged in user
 core.getUserRole() - get role of logged in user (user, developer, or admin)
+async core.getOrganizations() - get all Organization records
 
 ## available core.mount locations
 
@@ -44,7 +47,7 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible. Do not override the styles in the CSS classes you use, use them as-is.  You can assume they are available to any widgets you mount.
 
 ## General guidelines
 
@@ -54,6 +57,9 @@ If showing an organization, always show the organisation name and not the organi
 
 Users should be shown like this: first_name surname (@username)
 
+Ticket should be shown like this: Ticket #ticket_id
+
+This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
 
 
 ## CSS definitions
@@ -61,13 +67,81 @@ Users should be shown like this: first_name surname (@username)
 :root {
   --text-color: #000;
   --main-bg-color: #fff;
-  --nav_bar-bg-color: #eee;
-  --top_menu-bg-color: #222;
-  --top-menu-text-color: #fff;
-  --button-bg-color: #aaf;
+  --button-bg-color: #bbf;
   --button-text-color: #006;
+  --highlight-ticket-bg-color: #fcc;
+  --mainmenu-item-selected-bg-color: #66f;
 }
 
+\/* Use UL/LI with the following classes for mainmenu *\/
+ul.mainmenu {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  background-color: #222;
+  margin: 8px;
+}
+li.mainmenu-item {
+  cursor: pointer;
+  padding: 10px 5px;
+  user-select: none;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+    ul.mainmenu {
+        display: block;
+        height: auto;
+    }
+}
+
+span.logged-in-user {
+  font-size: 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+
+\/* Use the organization-avatar styles to add an avatar to each organization *\/
+div.organization-avatar {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+\/* Avatar variant for null organization *\/
+div.organization-avatar.id-none {
+  background-color: #eee;
+}
+\/* Avatar variants numbered "id-1" through "id-6" *\/
+div.organization-avatar.id-1 {
+  background-color: #f84;
+}
+div.organization-avatar.id-2 {
+  background-color: #fe4;
+}
+div.organization-avatar.id-3 {
+  background-color: #0f0;
+}
+div.organization-avatar.id-4 {
+  background-color: #2df;
+}
+div.organization-avatar.id-5 {
+  background-color: #66f;
+}
+div.organization-avatar.id-6 {
+  background-color: #f4f;
+}
+
+input[type="text"], input[type="email"] {
+  width: 100%;
+}
+select {
+  background-color: var(--button-bg-color);
+  font-size: 18px;
+}
+pre {
+  white-space: pre-wrap;
+}
 
 ## SQL table definitions
 
@@ -87,8 +161,7 @@ CREATE TABLE User (
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     organization_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    status TEXT NOT NULL
+    role TEXT NOT NULL
 );
 
 -- Ticket status is same as status of last response
@@ -114,106 +187,99 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Show a form to submit a ticket, with the following fields: text - a textarea; assigned_to - a dropdown with as options None (NULL), and each vendor organization.  Show a submit button that creates a new ticket when clicked.  The new ticket must have status=open and submitted_by equals the currently logged in user. Route to show_popup with as custom parameter 'Ticket submitted.'.
+Show a form to submit a ticket, with the following fields: text - a wide textarea; assigned_to - a dropdown with as options None (NULL), and each vendor organization.  Show a submit button that creates a new ticket when clicked.  The new ticket has status=open and submitted_by equals the currently logged in user. Route to show_popup with as custom parameter 'Ticket submitted.'.
 @webcogs_end_prompt_section*/
-// SubmitTicketFormPlugin.js
-// A plugin that shows a form for submitting a new ticket
-
-export default class SubmitTicketFormPlugin {
-    constructor(core) {
+export class SubmitTicketForm {
+    constructor(core, ...custom_params) {
         this.core = core;
         this.shadow = null;
-        this.init();
+        // Immediately-invoked async init
+        (async () => {
+            await this.init();
+        })();
     }
 
     async init() {
-        // Fetch vendor organisations for the dropdown
-        let vendors = [];
-        try {
-            vendors = await this.core.db.run("SELECT id, name FROM Organization WHERE role=?", ["vendor"]);
-        } catch (e) {
-            console.error("DB error while fetching vendors", e);
+        // Fetch all organizations and keep only vendors
+        const allOrgs = await this.core.getOrganizations();
+        const vendorOrgs = (allOrgs || []).filter(org => org.role === 'vendor');
+
+        // Build <option> list for the select element
+        let optionsHtml = `<option value="">${this.core.translate('None')}</option>`;
+        for (const org of vendorOrgs) {
+            // Organization option shows organization name, not ID
+            optionsHtml += `<option value="${org.id}">${this.core.translate(org.name)}</option>`;
         }
 
-        // Build the options HTML
-        let optionsHtml = '<option value="">None</option>'; // empty value -> NULL
-        vendors.forEach(v => {
-            // Always show organization name, not ID
-            optionsHtml += `<option value="${v.id}">${this.escapeHtml(v.name)}</option>`;
-        });
-
-        // HTML for the widget
+        // Compose the widget HTML
         const html = `
-            <div class="ticket-form">
-                <h2>Submit Ticket</h2>
+            <h2>${this.core.translate('Submit a Ticket')}</h2>
+            <form id="ticket-form">
                 <label>
-                    Text:<br />
-                    <textarea id="ticket_text" rows="5" style="width:100%;"></textarea>
+                    ${this.core.translate('Text')}<br/>
+                    <textarea id="ticket-text" rows="8" style="width:100%;"></textarea>
                 </label>
-                <br /><br />
+                <br/>
                 <label>
-                    Assigned to:<br />
-                    <select id="assigned_to">${optionsHtml}</select>
+                    ${this.core.translate('Assigned to')}
+                    <select id="assigned-to">${optionsHtml}</select>
                 </label>
-                <br /><br />
-                <button id="submit_btn" class="submit-btn">Submit</button>
-            </div>
+                <br/><br/>
+                <button id="submit-btn" type="submit">${this.core.translate('Submit')}</button>
+            </form>
         `;
 
-        // CSS for the widget
+        // Simple CSS for the widget
         const css = `
-            .ticket-form { color: var(--text-color); background: var(--main-bg-color); padding: 1em; }
-            .ticket-form h2 { margin-top: 0; }
-            .submit-btn { background: var(--button-bg-color); color: var(--button-text-color); padding: 0.5em 1em; border: none; cursor: pointer; }
-            .submit-btn:hover { opacity: 0.9; }
+            h2 {
+                color: var(--text-color);
+            }
+            button {
+                background-color: var(--button-bg-color);
+                color: var(--button-text-color);
+                padding: 8px 16px;
+                font-size: 16px;
+                cursor: pointer;
+            }
         `;
 
         // Mount the widget in the main area
         this.shadow = this.core.mount('main', html, css);
 
-        // Attach event listener
-        this.shadow.getElementById('submit_btn').addEventListener('click', () => this.submitTicket());
+        // Attach submit handler
+        const formEl = this.shadow.getElementById('ticket-form');
+        if (formEl) {
+            formEl.addEventListener('submit', (event) => this.onSubmit(event));
+        }
     }
 
-    // Escape HTML utility
-    escapeHtml(text) {
-        return text.replace(/[&<>"']/g, function (m) {
-            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[m];
-        });
-    }
+    async onSubmit(event) {
+        event.preventDefault();
 
-    async submitTicket() {
-        const textArea = this.shadow.getElementById('ticket_text');
-        const select = this.shadow.getElementById('assigned_to');
+        // Get form values
+        const textEl = this.shadow.getElementById('ticket-text');
+        const selectEl = this.shadow.getElementById('assigned-to');
 
-        const text = textArea.value.trim();
-        if (!text) {
-            // simple validation – do not create empty tickets
-            alert('Text cannot be empty.');
+        const textValue = textEl ? textEl.value.trim() : '';
+        const assignedValue = selectEl ? selectEl.value : '';
+
+        // Basic guard: do not allow empty text
+        if (!textValue) {
+            alert(this.core.translate('Please enter ticket text.'));
             return;
         }
 
-        const assignedToRaw = select.value;
-        const assignedTo = assignedToRaw === '' ? null : parseInt(assignedToRaw, 10);
+        const submittedBy = this.core.getUserId();
+        const assignedTo = assignedValue === '' ? null : parseInt(assignedValue, 10);
         const now = new Date().toISOString();
-        const userId = this.core.getUserId();
 
-        try {
-            await this.core.db.run(
-                'INSERT INTO Ticket (submitted_by, assigned_to, text, time, status) VALUES (?,?,?,?,?)',
-                [userId, assignedTo, text, now, 'open']
-            );
-        } catch (e) {
-            console.error('Failed to create ticket', e);
-            alert('Failed to submit ticket. Please try again.');
-            return;
-        }
+        // Insert new ticket into the database
+        await this.core.db.run(
+            'INSERT INTO Ticket (submitted_by, assigned_to, text, time, status) VALUES (?,?,?,?,?)',
+            [submittedBy, assignedTo, textValue, now, 'open']
+        );
 
-        // Route to popup confirmation
-        this.core.route('show_popup', 'Ticket submitted.');
-
-        // Optionally clear form
-        textArea.value = '';
-        select.value = '';
+        // Notify user and route to popup
+        this.core.route('show_popup', this.core.translate('Ticket submitted.'));
     }
 }

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"> 
     <meta charset="UTF-8">
     <title>WebCogs example app</title>
     <link rel="stylesheet" href="basestyles.css"></head>
@@ -11,9 +12,10 @@
             font-family: Arial, sans-serif;
             background: #fafafa;
         }
+
         .menu {
             width: 100%;
-            height: 64px;
+            /*height: 64px;*/
             padding: 8px;
             background: #222;
             color: #fff;
@@ -46,6 +48,7 @@
                 flex-direction: column;
             }
             .config-area {
+                display: none;
                 width: 100%;
                 border-right: none;
                 border-bottom: 1px solid #ddd;
@@ -71,6 +74,7 @@
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             width: fit-content;
+            min-width: 300px;
         }
     </style>
 </head>
@@ -81,11 +85,9 @@
         </div>
     </div>
     <div id="nav_bar" class="menu">
-        Menu Area
     </div>
     <div class="layout">
         <div id="side_bar" class="config-area">
-            Side Bar
         </div>
         <div id="main" class="main-content">
             Please select a page from the top menu.
@@ -107,17 +109,18 @@ function router(route, ...params) {
     }
     try {
         // check if route requires modal dialog
-        if (route == "login" || route == "show_popup") {
+        if (route == "login" || route == "show_popup" || route == "signup") {
             document.getElementById('overlay').style.display = 'block';
-            // keep updating the sidebar
-            core.initPlugin("sidebar_tickets")
+            if (route == "show_popup") {
+                core.initPlugin("sidebar_tickets") // keep updating the sidebar
+            }
             core.initPlugin(route, ...params)
         } else if (route == "hide_popup") {
             document.getElementById('overlay').style.display = 'none';
         } else if (route == "logged_in") {
             core.login(params[0],params[1]).then((userinfo) => {
                 console.log(userinfo)
-                if (userinfo.user_id) {
+                if (userinfo) {
                     core.user_id = userinfo.user_id
                     core.user_role = userinfo.user_role
                     document.getElementById('overlay').style.display = 'none';
@@ -125,11 +128,15 @@ function router(route, ...params) {
                     core.initPlugin("sidebar_tickets")
                     //console.log(token)
                 } else {
-                    core.initPlugin("login","Failed to login)")
+                    core.initPlugin("login","Failed to login")
                 }
             })
             //alert("Logged in with: "+JSON.stringify(params))
+        } else if (route == "signed_up") {
+            console.log(params)
+            core.initPlugin("login", "Signup submitted, please check your mail for a verify link.")
         } else if (route == "logout") {
+            core.loadTranslations(null) // reset language
             core.logout()
             // clear screen
             core.unmountShadowDom("main")
@@ -137,10 +144,23 @@ function router(route, ...params) {
             core.unmountShadowDom("side_bar")
             core.initPlugin("login")
             document.getElementById('overlay').style.display = 'block';
+        } else if (route == "set_language") {
+            if (params[0] == "en_us") {
+                core.loadTranslations(null).then( () => {
+                    core.initPlugin("login",null,params[0])
+                })
+            } else {
+                core.loadTranslations(`i18n/${params[0]}.json`).then( () => {
+                    // always coming from login -> reload login
+                    core.initPlugin("login",null,params[0])
+                })
+            }
         } else {
+            if (route == "show_popup" || route == "ticket_response") {
+               // update the sidebar when tickets may have changed
+               core.initPlugin("sidebar_tickets")
+            }
             document.getElementById('overlay').style.display = 'none';
-            // keep updating the sidebar
-            core.initPlugin("sidebar_tickets")
             core.initPlugin(route, ...params)
         }
     } catch (e) {
@@ -155,7 +175,8 @@ function mounter(location, html_code, css_code) {
     return core.mountShadowDom(location,html_code,css_code)
 }
 var db = new SQLDb("db/run","webcogs_app_csrf_token")
-var core = new TicketAppCore(router,mounter,db)
+var core = new TicketAppCore(router,mounter,"basestyles.css",db)
+//core.loadTranslations("i18n/nl_nl.json")
 async function init() {
     await core.loadPlugins(window.location.pathname.replace(/[^/]*$/, ''),"manifest.json")
     document.getElementById('overlay').style.display = 'block';

@@ -14,8 +14,13 @@
 	"targets": [
 		{
 			"name": "login",
-			"prompts": [ { "text": "Write a plugin that shows a login screen as a modal dialog. It has two fields: username and password, and a button 'login'. When login is pressed, route to 'logged_in' with username and password as parameters. The constructor takes an extra string parameter 'error'. If defined, the error should be shown under the login button." } ],
+			"prompts": [ { "text": "Write a plugin that shows a login screen as a modal dialog. It has two fields: username and password, and a button 'login'. When login is pressed, route to 'logged_in' with username and password as parameters. The constructor takes two parameters: 'error' and 'language'. If error is defined, the error should be shown under the login button. Below the login button is a language selector, where you can select a language: English (en_us), Dutch (nl_nl), and Italian (it_it).  If language parameter is defined, default to that, otherwise to en_us. When a language is selected, route to set_language with as parameter the language code. Below that is a signup button, which routes to signup." } ],
 			"file": "login/plugin.js"
+		},
+		{
+			"name": "signup",
+			"prompts": [ { "text": "Write a plugin that shows a signup form as a modal dialog. The form has the following fields: username, email, first_name, surname, and a dropdown for selecting organization and role (user or developer). A submit button routes to signed_up, with as custom parameter an object with the fields in it.  A cancel button should route back to login.  The constructor takes an extra string parameter 'error'. If defined, the error should be shown under the signup button. You have no access to core.db, so use core.getOrganizations instead." } ],
+			"file": "signup/plugin.js"
 		},
 		{
 			"name": "mainmenu",
@@ -38,8 +43,13 @@
 			"file": "user_overview/plugin.js"
 		},
 		{
+			"name": "user_profile",
+			"prompts": [ { "text": "Create a widget that has a view mode and an edit mode, set via a constructor custom boolean parameter 'edit_mode'. In view mode, show the currently logged in user record in a table with two columns, keys left and values right, and show an edit button. which routes to user_profile with edit_mode=true.  In edit mode, show a form where you can edit email, first_name, surname, a dropdown showing organization names for selecting the organization_id, and a dropdown for selecting role (user, developer).  A submit button updates the filled-in user fields and routes to user_profile. A cancel button returns to view mode." } ],
+			"file": "user_profile/plugin.js"
+		},
+		{
 			"name": "sidebar_tickets",
-			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all tickets assigned to the logged in user's organization and with status=open, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  " } ],
+			"prompts": [ { "text": "Create a sidebar widget that shows two vertical lists of tickets, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  The first list shows all tickets assigned to the logged in user's organization and with status=open. The second list shows all tickets submitted by the logged in user, and with status=open or status=in_progress. " } ],
 			"file": "sidebar_tickets/plugin.js"
 		},
 		{
@@ -64,7 +74,7 @@
 		},
 		{
 			"name": "ticket_stats",
-			"prompts": [ { "text": "Show a bar chart that shows the number of submitted tickets per day over the last 30 days. Show dates in the form mm-dd at the x axis, and ticks on the y axis." } ],
+			"prompts": [ { "text": "Show the total number of tickets subdivided by status and assigned organization in a table. If you click on a status column header, route to ticketadmin with as parameter the status.  Below that, show a stacked bar chart that shows the number of submitted tickets and the number of responses per day over the last 30 days. Show every other date in the form mm-dd at the x axis, and ticks on the y axis. Also show a legend." } ],
 			"file": "ticket_stats/plugin.js"
 		}
 	]

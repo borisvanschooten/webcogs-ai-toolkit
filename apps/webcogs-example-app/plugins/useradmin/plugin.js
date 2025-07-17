@@ -1,7 +1,7 @@
 /*@webcogs_system_prompt
 # Docs for writing a plugin
 
-A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Do not assume any libraries are available.  For example jquery is not available, so do not call $(...).  The class constructor always has this signature: 
+A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
 constructor(core, ...custom_params). Parameter "core" is the core object, which contains the core API functions.  The constructor can be any number of additional custom parameters.
 
 The plugin class is constructed when the core app invokes the plugin, and can be destroyed and constructed any number of times during the app's lifecycle.
@@ -21,10 +21,18 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
+function core.translate(string) - Translate a string into the user's language.
+
 ## Core properties
 
 core.db is a SQLite compatible database object. It has the following functions: 
 - async function db.run(sql_statement, optional_values) - execute a SQL statement or query. Note this is an async function. If it is a query, returns an array of objects, otherwise returns null. Each object represents a record, with keys representing the column names and values the record values. If optional_values is supplied, it should be an array, with its elements bound to "?" symbols in the sql_statement string. For example: db.run("SELECT * FROM my_table WHERE id=?",[1000]) will be interpolated to "SELECT * FROM my_table where id=1000". 
+
+## Additional core functions
+
+core.getUserId() - get ID of logged in user
+core.getUserRole() - get role of logged in user (user, developer, or admin)
+async core.getOrganizations() - get all Organization records
 
 ## available core.mount locations
 
@@ -39,13 +47,21 @@ A route is a string that indicates a widget plugin name.
 
 ## Style guide
 
-Widgets should always display a title.
+Use the classes, styles, and properties in the supplied CSS definitions as much as possible. Do not override the styles in the CSS classes you use, use them as-is.  You can assume they are available to any widgets you mount.
 
-Use the classes, styles, and properties in the supplied CSS definitions as much as possible.
+For widgets using modal_dialog, use the full available width.
 
 ## General guidelines
 
-If showing a user's organization, show the organisation name and not the organizaiton ID.
+Widgets should always display a title.
+
+If showing an organization, always show the organisation name and not the organization ID.
+
+Users should be shown like this: first_name surname (@username)
+
+Ticket should be shown like this: Ticket #ticket_id
+
+This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
 
 
 ## CSS definitions
@@ -53,13 +69,89 @@ If showing a user's organization, show the organisation name and not the organiz
 :root {
   --text-color: #000;
   --main-bg-color: #fff;
-  --nav_bar-bg-color: #eee;
-  --top_menu-bg-color: #222;
-  --top-menu-text-color: #fff;
-  --button-bg-color: #aaf;
+  --button-bg-color: #bbf;
   --button-text-color: #006;
+  --highlight-ticket-bg-color: #fcc;
+  --mainmenu-item-selected-bg-color: #66f;
 }
 
+\/* Use UL/LI with the following classes for mainmenu *\/
+ul.mainmenu {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  background-color: #222;
+  margin: 8px;
+}
+li.mainmenu-item {
+  cursor: pointer;
+  padding: 10px 5px;
+  user-select: none;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+    ul.mainmenu {
+        display: block;
+        height: auto;
+    }
+}
+
+span.logged-in-user {
+  font-size: 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+
+\/* Use the organization-avatar styles to add an avatar to each organization *\/
+div.organization-avatar {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+\/* Avatar variant for null organization *\/
+div.organization-avatar.id-none {
+  background-color: #eee;
+}
+\/* Avatar variants numbered "id-1" through "id-6" *\/
+div.organization-avatar.id-1 {
+  background-color: #f84;
+}
+div.organization-avatar.id-2 {
+  background-color: #fe4;
+}
+div.organization-avatar.id-3 {
+  background-color: #0f0;
+}
+div.organization-avatar.id-4 {
+  background-color: #2df;
+}
+div.organization-avatar.id-5 {
+  background-color: #66f;
+}
+div.organization-avatar.id-6 {
+  background-color: #f4f;
+}
+
+input[type="text"], input[type="email"] {
+  width: 100%;
+}
+select {
+  background-color: var(--button-bg-color);
+  font-size: 18px;
+  padding: 4px;
+}
+button {
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  padding: 4px 12px;
+  font-size: 18px;
+  cursor: pointer;
+}
+pre {
+  white-space: pre-wrap;
+}
 
 ## SQL table definitions
 
@@ -79,8 +171,7 @@ CREATE TABLE User (
     first_name TEXT NOT NULL,
     surname TEXT NOT NULL,
     organization_id INTEGER NOT NULL,
-    role TEXT NOT NULL,
-    status TEXT NOT NULL
+    role TEXT NOT NULL
 );
 
 -- Ticket status is same as status of last response
@@ -106,174 +197,151 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Write a plugin that shows a list of all users in the database, and show all fields for each user, including organization name and role. When you click on a user, it should route to "user_overview" with as parameter the user ID.
+Write a plugin that shows a list of all users in the database, and show all fields for each user, including organization name and role.  Users should be sorted by organization, then by surname.  There should be a title with the organization avatar and name above the users of each organization. Each item should be a block with the field names left and the values right. When you click on a user, it should route to "user_overview" with as parameter the user ID.
 
 @webcogs_end_prompt_section*/
-export default class UsersList {
+export class UsersByOrganization {
   constructor(core) {
     this.core = core;
-    // Mount the initial UI
-    this.shadow = core.mount("main", this._htmlTemplate(), this._css());
-
-    // Cache tbody for later population
-    this.tbody = this.shadow.querySelector("tbody");
-
-    // Load data from DB and render
-    this._loadData();
+    this.shadowRoot = null;
+    this.init();
   }
 
-  /* -------------------------------------------------------------------- */
-  /*                           UI TEMPLATES                               */
-  /* -------------------------------------------------------------------- */
-
-  _htmlTemplate() {
-    return `
-      <div class="users-list-widget">
-        <h2>All Users</h2>
-
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Username</th>
-              <th>First name</th>
-              <th>Surname</th>
-              <th>Email</th>
-              <th>Organisation</th>
-              <th>Organisation role</th>
-              <th>User role</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td colspan="9" class="loading">Loading …</td></tr>
-          </tbody>
-        </table>
+  async init() {
+    // Build base HTML & CSS and mount widget
+    const html = `
+      <div class="user-list-widget">
+        <h2>${this.core.translate("Users")}</h2>
+        <div id="user-list"></div>
       </div>
     `;
-  }
 
-  _css() {
-    return `
-      .users-list-widget {
-        color: var(--text-color);
-        background-color: var(--main-bg-color);
-        padding: 1rem;
-      }
-
-      .users-list-widget h2 {
+    const css = `
+      .user-list-widget h2 {
         margin-top: 0;
       }
-
-      .users-list-widget table {
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.9rem;
+      .organization-header {
+        margin-top: 20px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 20px;
+        font-weight: bold;
+        color: var(--text-color);
       }
-
-      .users-list-widget th,
-      .users-list-widget td {
-        padding: 0.5rem 0.75rem;
+      .user-block {
         border: 1px solid #ccc;
-        text-align: left;
-      }
-
-      .users-list-widget tbody tr:hover {
-        background-color: #f5f5f5;
+        padding: 10px;
+        margin: 5px 0;
         cursor: pointer;
+        background-color: var(--main-bg-color);
       }
-
-      .users-list-widget td.loading {
-        text-align: center;
-        font-style: italic;
+      .user-block:hover {
+        background-color: #f2f6ff;
       }
-
-      .users-list-widget td.error {
-        color: red;
-        text-align: center;
+      .field-row {
+        display: flex;
+        margin: 2px 0;
+      }
+      .field-name {
+        width: 140px;
+        font-weight: bold;
+        color: var(--text-color);
+      }
+      .field-value {
+        flex: 1;
+        color: var(--text-color);
       }
     `;
+
+    this.shadowRoot = this.core.mount("main", html, css);
+    await this.renderUsers();
   }
 
-  /* -------------------------------------------------------------------- */
-  /*                             DATA LAYER                               */
-  /* -------------------------------------------------------------------- */
+  getAvatarClass(orgId) {
+    if (orgId === null || orgId === undefined) return "id-none";
+    const n = ((orgId - 1) % 6) + 1; // 1..6
+    return `id-${n}`;
+  }
 
-  async _loadData() {
-    const sql = `
-      SELECT
-        User.id                AS id,
-        User.username          AS username,
-        User.email             AS email,
-        User.first_name        AS first_name,
-        User.surname           AS surname,
-        User.role              AS user_role,
-        User.status            AS status,
-        Organization.name      AS organisation_name,
-        Organization.role      AS organisation_role
-      FROM User
-      JOIN Organization ON User.organization_id = Organization.id
-      ORDER BY User.id
-    `;
+  async renderUsers() {
+    // Query all users joined with organization details
+    const sql = `SELECT User.id AS user_id,
+                        User.username,
+                        User.email,
+                        User.first_name,
+                        User.surname,
+                        User.role AS user_role,
+                        Organization.id AS org_id,
+                        Organization.name AS organization_name,
+                        Organization.role AS organization_role
+                 FROM User
+                 JOIN Organization ON User.organization_id = Organization.id
+                 ORDER BY Organization.name COLLATE NOCASE, User.surname COLLATE NOCASE`;
 
+    let records = [];
     try {
-      const rows = await this.core.db.run(sql);
-      this._renderRows(rows || []);
-    } catch (err) {
-      // Display an error message
-      this.tbody.innerHTML = `<tr><td colspan="9" class="error">Error loading users</td></tr>`;
-      // Optionally, log to console for debugging
-      console.error(err);
-    }
-  }
-
-  /* -------------------------------------------------------------------- */
-  /*                           RENDER HELPERS                             */
-  /* -------------------------------------------------------------------- */
-
-  _renderRows(rows) {
-    // Clear current rows
-    this.tbody.innerHTML = "";
-
-    if (rows.length === 0) {
-      this.tbody.innerHTML = `<tr><td colspan="9">No users found</td></tr>`;
+      records = await this.core.db.run(sql);
+    } catch (e) {
+      console.error("Error fetching users", e);
       return;
     }
 
-    // Populate table
-    rows.forEach(user => {
-      const tr = document.createElement("tr");
-      tr.dataset.userId = user.id;
+    const container = this.shadowRoot.querySelector("#user-list");
+    container.innerHTML = "";
 
-      tr.innerHTML = `
-        <td>${user.id}</td>
-        <td>${user.username}</td>
-        <td>${user.first_name}</td>
-        <td>${user.surname}</td>
-        <td>${user.email}</td>
-        <td>${user.organisation_name}</td>
-        <td>${user.organisation_role}</td>
-        <td>${user.user_role}</td>
-        <td>${user.status}</td>
-      `;
+    let currentOrgId = null;
+    let headerElem = null;
 
-      // Click handler to route to user overview
-      tr.addEventListener("click", () => {
-        this.core.route("user_overview", user.id);
+    for (const row of records) {
+      if (row.org_id !== currentOrgId) {
+        currentOrgId = row.org_id;
+        // New organization header
+        headerElem = document.createElement("div");
+        headerElem.className = "organization-header";
+        headerElem.innerHTML = `
+          <div class="organization-avatar ${this.getAvatarClass(row.org_id)}"></div>
+          <span>${row.organization_name}</span>
+        `;
+        container.appendChild(headerElem);
+      }
+
+      // User block
+      const userBlock = document.createElement("div");
+      userBlock.className = "user-block";
+
+      // Build field rows
+      const fields = [
+        { name: this.core.translate("Username"), value: row.username },
+        { name: this.core.translate("Email"), value: row.email },
+        { name: this.core.translate("First name"), value: row.first_name },
+        { name: this.core.translate("Surname"), value: row.surname },
+        { name: this.core.translate("Role"), value: row.user_role },
+        { name: this.core.translate("Organization role"), value: row.organization_role }
+      ];
+
+      fields.forEach(f => {
+        const fieldRow = document.createElement("div");
+        fieldRow.className = "field-row";
+
+        const fieldName = document.createElement("div");
+        fieldName.className = "field-name";
+        fieldName.textContent = f.name;
+
+        const fieldValue = document.createElement("div");
+        fieldValue.className = "field-value";
+        fieldValue.textContent = f.value;
+
+        fieldRow.appendChild(fieldName);
+        fieldRow.appendChild(fieldValue);
+        userBlock.appendChild(fieldRow);
       });
 
-      this.tbody.appendChild(tr);
-    });
-  }
+      userBlock.addEventListener("click", () => {
+        this.core.route("user_overview", row.user_id);
+      });
 
-  /* -------------------------------------------------------------------- */
-  /*                               CLEANUP                                */
-  /* -------------------------------------------------------------------- */
-
-  // Optional destroy handler if the core supports plugin destruction
-  destroy() {
-    if (this.shadow && this.shadow.host && this.shadow.host.remove) {
-      this.shadow.host.remove();
+      container.appendChild(userBlock);
     }
   }
 }

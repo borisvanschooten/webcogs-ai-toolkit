@@ -25,12 +25,12 @@ async function initDB() {
 	db.run(sqlstr);
 
 	sqlstr = 
-  'INSERT INTO Organization VALUES (1,"org1","customer");\
-  INSERT INTO Organization VALUES (2,"org2","vendor");\
-  INSERT INTO Organization VALUES (3,"org3","customer");\
-  INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith",1,"user","verified");\
-	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee",2,"developer","verified");\
-  INSERT INTO user VALUES (3,"wendy","wendy-potters@gmail.com","Wendy","Potters",3,"user","verified");\
+  'INSERT INTO Organization VALUES (1,"Organization 1","vendor");\
+  INSERT INTO Organization VALUES (2,"Organization 2","vendor");\
+  INSERT INTO Organization VALUES (3,"Organization 3","vendor");\
+  INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith",1,"user");\
+	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee",2,"developer");\
+  INSERT INTO user VALUES (3,"wendy","wendy-potters@gmail.com","Wendy","Potters",3,"user");\
   INSERT INTO Ticket VALUES (1,1,2,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01 11:10:00","open");\
 	INSERT INTO Ticket VALUES (2,1,2,"The problem with my phone persists, please help.","2025-07-07 15:30:11","open");\
 	INSERT INTO Ticket VALUES (3,2,NULL,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03 13:33:00","open");\
@@ -89,12 +89,25 @@ app.get('/db/run', async (req, res) => {
   if (!query || !token || !doubleSubmitToken || !jwtToken) {
     return res.status(400).json({ error: 'Query and token nust be provided' });
   }
-  if (doubleSubmitToken != token) {
+  if (jwtPayload.csrf_token != token) {
     return res.status(401).json({ error: 'Invalid access token' });
   }
   // TODO check jwtPayload.timestamp expiry
   try {
     const result = db.exec(query,params);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+
+app.get('/api/getOrganizations', async (req, res) => {
+  if (!db) {
+    return res.status(503).json({ error: 'Database not initialized' });
+  }
+  try {
+    const result = db.exec("SELECT id, name, role FROM Organization ORDER BY name");
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -122,6 +135,7 @@ app.get('/auth/login', async (req, res) => {
       const payload = {
         user_id: user_id,
         username: username,
+        csrf_token: doubleSubmitToken,
         timestamp: Date.now(),
       };
       const jwtToken = jwt.sign(payload, JWT_SECRET);
@@ -130,13 +144,13 @@ app.get('/auth/login', async (req, res) => {
         secure: true,       // HTTPS only
         sameSite: 'Lax',    // or 'Strict'
         path: '/db/run',
-        maxAge: 24 * 60 * 60 * 1000 // 1 day
+        maxAge: 8 * 60 * 60 * 1000 // 8 hours
       });
       res.cookie('webcogs_app_csrf_token', doubleSubmitToken, {
         secure: true,       // HTTPS only
         sameSite: 'Lax',    // or 'Strict'
         path: '/',
-        maxAge: 24 * 60 * 60 * 1000 // 1 day
+        maxAge: 8 * 60 * 60 * 1000 // 8 hours
       });
       return res.json({
          user_id: user_id,

@@ -57,12 +57,14 @@ function generatePromptsFromManifest(manifest, baseDir = '.', targetBaseDir = ".
     }
 }
 
-
-
 function getPromptSpec(i) {
-    var prompt = "/*@webcogs_system_prompt\n" + prompts.system_prompt
+    var prompt = "@webcogs_system_prompt\n" + prompts.system_prompt
             + "\n@webcogs_user_prompt\n" + prompts.user_prompts[i].text
-            + "\n@webcogs_end_prompt_section*/\n"
+            + "\n@webcogs_end_prompt_section"
+    // escape comments
+    prompt = prompt.replace(/\/\*/g, '\\/*').replace(/\*\//g, '*\\/');
+    prompt = `/*${prompt}*/\n`;
+    // normalise linebreaks
     return prompt.replaceAll("\r\n","\n")
 }
 
@@ -147,7 +149,7 @@ function diff(i) {
 
 async function runCommand() {
     for (var i=0; i<prompts.user_prompts.length; i++) {
-        if (buildTarget != "all" && buildTarget != prompts.user_prompts[i].name) continue;
+        if (!buildTargets.includes("all") && !buildTargets.includes(prompts.user_prompts[i].name)) continue;
         if (command == "build") {
             await build(i,false)
         } else if (command == "build-changed") {
@@ -165,13 +167,13 @@ async function runCommand() {
 // Main build script
 
 if (process.argv.length < 5) {
-    console.error('Usage: buildcog  <command>  <build target>  <prompt manifest json file>.  Command is one of: diff, build, build-changed.');
+    console.error('Usage: buildcog  <command>  <build targets>  <prompt manifest json file>.\n    Command is one of: diff, build, build-changed.\n    Build targets is a list of targets or "all" for all targets.');
     process.exit(1);
 }
 
 const command = process.argv[2]
-const buildTarget = process.argv[3];
-const manifestPath = process.argv[4];
+const buildTargets = process.argv.slice(3, process.argv.length - 1);
+const manifestPath = process.argv[process.argv.length - 1];
 //var baseDir = "."
 var baseDir = path.dirname(manifestPath);
 

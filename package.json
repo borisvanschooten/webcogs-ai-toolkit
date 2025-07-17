@@ -13,5 +13,8 @@
     "jsonwebtoken": "^9.0.2",
     "openai": "^5.1.1",
     "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "xgettext-js": "^3.0.0"
   }
 }

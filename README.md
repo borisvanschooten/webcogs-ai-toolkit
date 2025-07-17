@@ -74,11 +74,6 @@ Prompt manifest format is as follows:
 			"prompts": [ { "text": "Create a widget that shows in the sidebar, showing a vertical list of all open tickets, sorted by date. Open tickets are tickets for which response = NULL.  If you click on a ticket, route to ticket_overview." } ],
 			"file": "sidebar_tickets/plugin.js"
 		},
-		{
-			"name": "ticketadmin",
-			"prompts": [ { "file": "ticketadmin/plugin_docs.md" } ],
-			"file": "ticketadmin/plugin.js"
-		},
 		[...]
 	]
 }
@@ -89,12 +84,12 @@ ai_vendor and ai_model refer to the LLM to use. Currently only openai is support
 The buildcog command line tool can now be used to build targets.  You first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the key, you can use the following command to re-generate plugins for the example app:
 
 ```
-buildcog build <target_name> apps/webcogs-example-app/manifest.json
+buildcog build <target_name> [<target name> ... ] apps/webcogs-example-app/manifest.json
 ```
 
-**build** is the command to generate code, **\<target_name\>** is the name of the target to build (e.g. **mainmenu**). The target **all** refers to all targets.
+**build** is the command to generate code, **\<target_name\>** is the name of the target(s) to build (e.g. **mainmenu**). The target **all** refers to all targets.
 
-The generated JS files contain the used prompts in a comment at the beginning. This is an easy way to include essential metadata in the generated files, and I find it useful to see the prompt when reviewing the generated code.  It does make the files larger, so you may want to minify them or strip the comments in production.  
+The generated JS files contain the used prompts in a comment at the beginning. This makes the file self-contained, as all underlying context specifications are right there in the generated file.  It does make the files larger, so you may want to minify them or strip the comments in production.  
 
 You can use buildcog's **diff** command to check if the prompt has changed w.r.t. the prompt that was used to generate the file:
 
@@ -139,6 +134,27 @@ WebCogsCore also comes with a simple SQL interface for handling data.
 
 A plugin always consists of a single class with a constructor that initialises the plugin and any associated widgets.  A WebCogsCore object is passed in, through which the plugin has access to the core API. Constructing a new instance resets the state of the plugin.  Custom arguments can be used to pass specific information to the constructor.
 
+### Multilinguality
+
+A translate tool based on gettext style translation is now available.  Basically you wrap all literal texts in your code in a function, and the function will translate it if there's a translation table available. The core functions for this are:
+
+- core.translate(text)
+- core.loadTranslations(filename)
+
+The example app has multilinguality.  The following prompt is used to instruct the AI:
+
+```
+This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+```
+
+This is enough to automatically wrap almost all literal strings.  The tool translate.js can now be used to extract the literal strings from the function calls using xgettext-js.  The strings are then fed into an AI to provide automatic translations and saved to a JSON file.  The following command line will get all strings from the example app plugins and put them in a JSON translation table:
+
+```
+node.exe clitools/translate.js Italian apps/webcogs-example-app/i18n/it_it.json apps/webcogs-example-app/plugins/*/plugin.js
+```
+
+If I decide to keep this new multilinguality scheme, it seems logical to eventually include it in the buildcog tool.
+
 ### Example WebCogs app
 
 An example WebCogs application is found in apps/webcogs-example-app/.  The app has to be run from a webserver that also provides SQL and auth endpoints. A simple webserver with example data for the app is provided. Run it with:
@@ -147,14 +163,14 @@ node ./clitools/webserver.js
 ``` 
 Now, you can run the app from http://localhost:3000/apps/webcogs-example-app/index.html.
 
-Log in with username: admin, pasword: admin.
+Log in with username: alan, pasword: admin.
 
 ## Future work
 
 This framework is very much in the experimental stage, and there is obviously a lot to be done. For example:
 
 - Suitable test harness
-- Handling browser navigation (e.g. the back button)
+- Handling browser navigation (e.g. the back button and URL rewriting)
 - Multiple output files in one target
 - More extensive core-plugin architecture for handling other things, like algoritms and backends
 - Support for more AI vendors and local models

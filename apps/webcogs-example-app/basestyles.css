@@ -1,10 +1,92 @@
 :root {
   --text-color: #000;
   --main-bg-color: #fff;
-  --nav_bar-bg-color: #eee;
-  --top_menu-bg-color: #222;
-  --top-menu-text-color: #fff;
-  --button-bg-color: #aaf;
+  --button-bg-color: #bbf;
   --button-text-color: #006;
-  --highlight-ticket-bg-color: #eaa;
+  --highlight-ticket-bg-color: #fcc;
+  --mainmenu-item-selected-bg-color: #66f;
+}
+
+/* Use UL/LI with the following classes for mainmenu */
+ul.mainmenu {
+  list-style: none;
+  display: flex;
+  gap: 15px;
+  background-color: #222;
+  margin: 8px;
+}
+li.mainmenu-item {
+  cursor: pointer;
+  padding: 10px 5px;
+  user-select: none;
+  color: #fff;
+}
+
+@media (max-width: 700px) {
+    ul.mainmenu {
+        display: block;
+        height: auto;
+    }
+}
+
+span.logged-in-user {
+  font-size: 18px;
+  cursor: pointer;
+  color: #fff;
+}
+
+
+/* Use the organization-avatar styles to add an avatar to each organization */
+div.organization-avatar {
+  display: inline-block;
+  width: 30px;
+  height: 30px;
+}
+/* Avatar variant for null organization */
+div.organization-avatar.id-none {
+  background-color: #eee;
+}
+/* Avatar variants numbered "id-1" through "id-6" */
+div.organization-avatar.id-1 {
+  background-color: #f84;
+}
+div.organization-avatar.id-2 {
+  background-color: #fe4;
+}
+div.organization-avatar.id-3 {
+  background-color: #0f0;
+}
+div.organization-avatar.id-4 {
+  background-color: #2df;
+}
+div.organization-avatar.id-5 {
+  background-color: #66f;
+}
+div.organization-avatar.id-6 {
+  background-color: #f4f;
+}
+input[type="text"], input[type="email"], input[type="password"] {
+  width: 100%;
+  min-width: 300px;
+}
+
+select {
+  background-color: var(--button-bg-color);
+  font-size: 18px;
+  padding: 4px;
+}
+button {
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  padding: 4px 12px;
+  font-size: 18px;
+  cursor: pointer;
+}
+button.route-to-signup {
+  border: none;
+  background-color: transparent;
+  font-weight: bold;
+}
+pre {
+  white-space: pre-wrap;
 }

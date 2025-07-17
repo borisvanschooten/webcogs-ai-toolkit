@@ -6,6 +6,17 @@ export class SQLDb {
 		this.baseurl = baseurl
 		this.authCookieName = authCookieName
 	}
+	convertRecordsToKeyValue(records) {
+		var ret = []
+		for (var r=0; r<records.values.length; r++) {
+			var row = {}
+			for (var c=0; c<records.columns.length; c++) {
+				row[records.columns[c]] = records.values[r][c]
+			}
+			ret.push(row)
+		}
+		return ret
+	}
 	async run(query,interpolation_params) {
 		const getCookie = n => (document.cookie.split('; ').find(row => row.startsWith(n + '=')) || '').split('=')[1] || null;
 		const url = new URL(this.baseurl, window.location.origin);
@@ -22,21 +33,12 @@ export class SQLDb {
 		})
 		var res_obj = await res.json()
 		if (typeof res_obj.error != "undefined") {
-			console.log("Database reports error: "+res.obj.error)
+			console.log("Database reports error: "+res_obj.error)
 			this.lastError = "Invalid access"
 			throw new Error("Invalid access")
 		}
 		if (res_obj.length == 0) return []
-		//console.log(res_obj)
-		// convert to key-value
-		var ret = []
-		for (var r=0; r<res_obj[0].values.length; r++) {
-			var row = {}
-			for (var c=0; c<res_obj[0].columns.length; c++) {
-				row[res_obj[0].columns[c]] = res_obj[0].values[r][c]
-			}
-			ret.push(row)
-		}
+		const ret = this.convertRecordsToKeyValue(res_obj[0])
 		//console.log(ret)
 		console.log(`SQLDb returned ${ret.length} results.`)
 		return ret
@@ -47,13 +49,32 @@ export class WebCogsCore {
 
 	routeCallback = null;
 	mountCallback = null;
+	baseStyleUrl = null;
+	translations = null;
 	loadedPlugins = {};
 	db = null;
 
-	constructor(routeCallback,mountCallback,db) {
+	constructor(routeCallback,mountCallback,baseStyleUrl,db) {
 		this.db = db;
 		this.routeCallback = routeCallback;
 		this.mountCallback = mountCallback;
+		this.baseStyleUrl = baseStyleUrl;
+	}
+
+	async loadTranslations(translationsFile) {
+		if (!translationsFile) {
+			this.translations = null;
+			return;
+		}
+		// NOTE: is asynchronous
+		var response = await fetch(translationsFile)
+		var data = await response.json()
+		console.log(data)
+		this.translations = data.reduce((acc, { source, translation }) => {
+			acc[source] = translation;
+			return acc;
+		}, {});
+		console.log(this.translations)
 	}
 
     /** Widget mount function for plugins.  Default implementation is to mount a shadow DOM on the elementID given by location.
@@ -81,9 +102,14 @@ export class WebCogsCore {
         if (!host) return;
 		// purge any old shadow root and any event listeners by cloning host node
 		const newHost = host.cloneNode(false);
-  		host.replaceWith(newHost);
         const shadow = /*host.shadowRoot ||*/ newHost.attachShadow({ mode: 'open' });
-        shadow.innerHTML = '';
+        //shadow.innerHTML = '';
+		if (this.baseStyleUrl) {
+			const baseLink = document.createElement('link');
+			baseLink.setAttribute('rel', 'stylesheet');
+			baseLink.setAttribute('href', this.baseStyleUrl);
+			shadow.appendChild(baseLink);
+		}
         if (css_code) {
             const style = document.createElement('style');
             style.textContent = css_code;
@@ -92,6 +118,7 @@ export class WebCogsCore {
         const wrapper = document.createElement('div');
         wrapper.innerHTML = html_code;
         shadow.appendChild(wrapper);
+  		host.replaceWith(newHost);
 		return shadow;
     }
 	
@@ -182,6 +209,13 @@ export class WebCogsCore {
 			console.error(`Cannot find plugin ${name}`)
 			return null
 		}
+	}
+
+	translate(text) {
+		if (!this.translations) return text;
+		var result = this.translations[text];
+		if (result) return result;
+		return text;
 	}
 
     /** Authenticates a user by username and password, retrieves a token upon success.
