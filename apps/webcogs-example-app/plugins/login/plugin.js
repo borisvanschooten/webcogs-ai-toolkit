@@ -21,10 +21,7 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
-async function core.loadTranslations(language_code) - load translations for a particular language
-language_code - an ISO language code, for example "en_us" or "en_gb", or null for the default
-
-function core.translate(string) - Translate a string into the user's language.
+function core.translate(string) - Translate a literal string into the user's language.
 
 ## Core properties
 
@@ -77,7 +74,7 @@ This is a multilingual applicatiom. Run all literal strings / texts in the code 
   --button-bg-color: #bbf;
   --button-text-color: #006;
   --highlight-ticket-bg-color: #fcc;
-  --mainmenu-item-selected-bg-color: #66f;
+  --mainmenu-item-selected-bg-color: #88f;
 }
 
 \/* Use UL/LI with the following classes for mainmenu *\/
@@ -85,8 +82,12 @@ ul.mainmenu {
   list-style: none;
   display: flex;
   gap: 15px;
-  background-color: #222;
   margin: 8px;
+  padding: 0px;
+  padding-left: 90px;
+  background-image: url('images/logo40-title.png');
+  background-repeat: no-repeat;
+  background-position: 0% 50%;
 }
 li.mainmenu-item {
   cursor: pointer;
@@ -99,6 +100,8 @@ li.mainmenu-item {
     ul.mainmenu {
         display: block;
         height: auto;
+        background: none;
+        padding-left: 0px;
     }
 }
 
@@ -138,6 +141,7 @@ div.organization-avatar.id-5 {
 div.organization-avatar.id-6 {
   background-color: #f4f;
 }
+
 input[type="text"], input[type="email"], input[type="password"] {
   width: 100%;
   min-width: 300px;
@@ -146,23 +150,50 @@ input[type="text"], input[type="email"], input[type="password"] {
 select {
   background-color: var(--button-bg-color);
   font-size: 18px;
+  border: 2px solid #88c;
   padding: 4px;
+  margin: 4px;
+  border-radius: 4px;
 }
+
 button {
   background-color: var(--button-bg-color);
   color: var(--button-text-color);
   padding: 4px 12px;
   font-size: 18px;
   cursor: pointer;
+  border: 2px solid #88c;
+  border-radius: 4px;
+  box-shadow: 4px 4px 4px rgba(0,0,0,0.1);
 }
 button.route-to-signup {
   border: none;
   background-color: transparent;
   font-weight: bold;
+  text-decoration: underline;
+  box-shadow: none;
 }
-pre {
+
+\/* use pre.ticket-text to show the content of ticket and response text *\/
+pre, pre.ticket-text {
   white-space: pre-wrap;
+  font-family: Arial, sans-serif;
+  background: #eee;
+  padding: 10px;
+  border: 1px solid #aaa;
 }
+
+div.login-screen-title {
+  font-size: 22px;
+  font-weight: bold;
+  background-image: url('images/logo40.png');
+  height: 40px;
+  line-height: 40px;
+  background-repeat: no-repeat;
+  background-position: 0% 50%;
+  padding-left: 90px;
+}
+
 
 ## SQL table definitions
 
@@ -201,6 +232,7 @@ CREATE TABLE Ticket (
 CREATE TABLE Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
     time DATETIME NOT NULL,
     assigned_to TEXT,
     status TEXT,
@@ -210,80 +242,73 @@ CREATE TABLE Response (
 @webcogs_user_prompt
 Write a plugin that shows a login screen as a modal dialog. It has two fields: username and password, and a button 'login'. When login is pressed, route to 'logged_in' with username and password as parameters. The constructor takes two parameters: 'error' and 'language'. If error is defined, the error should be shown under the login button. Below the login button is a language selector, where you can select a language: English (en_us), Dutch (nl_nl), and Italian (it_it).  If language parameter is defined, default to that, otherwise to en_us. When a language is selected, route to set_language with as parameter the language code. Below that is a signup button, which routes to signup.
 @webcogs_end_prompt_section*/
-export class LoginDialogPlugin {
-  constructor(core, error = null, language = null) {
+export class LoginScreen {
+  constructor(core, error, language) {
     this.core = core;
     this.error = error;
-    // default language
     this.language = language || 'en_us';
 
+    // Build HTML
     const html = `
-      <h2>${core.translate('Login')}</h2>
       <div>
-        <label for="username">${core.translate('Username')}</label><br>
-        <input type="text" id="username" />
-      </div>
-      <div style="margin-top:8px;">
-        <label for="password">${core.translate('Password')}</label><br>
-        <input type="password" id="password" />
-      </div>
-      <div style="margin-top:12px;">
-        <button id="login_btn">${core.translate('login')}</button>
-      </div>
-      <div id="error_msg" class="error" style="margin-top:4px; display:${this.error ? 'block' : 'none'};">${this.error ? core.translate(this.error) : ''}</div>
-      <div style="margin-top:16px;">
-        <label for="lang_select">${core.translate('Language')}</label><br>
-        <select id="lang_select">
-          <option value="en_us" ${this.language === 'en_us' ? 'selected' : ''}>${core.translate('English (en_us)')}</option>
-          <option value="nl_nl" ${this.language === 'nl_nl' ? 'selected' : ''}>${core.translate('Dutch (nl_nl)')}</option>
-          <option value="it_it" ${this.language === 'it_it' ? 'selected' : ''}>${core.translate('Italian (it_it)')}</option>
+        <div class="login-screen-title">${core.translate('Login')}</div>
+        <div>
+          <label for="username">${core.translate('Username')}</label><br>
+          <input type="text" id="username"><br><br>
+
+          <label for="password">${core.translate('Password')}</label><br>
+          <input type="password" id="password"><br><br>
+
+          <button type="button" id="login-btn">${core.translate('Login')}</button>
+          ${error !== undefined && error !== null && error !== '' ? `<div id="error-msg" class="error">${core.translate(error)}</div>` : ''}
+        </div>
+        <br>
+        <label for="language-select">${core.translate('Language')}</label><br>
+        <select id="language-select">
+          <option value="en_us">${core.translate('English')}</option>
+          <option value="nl_nl">${core.translate('Dutch')}</option>
+          <option value="it_it">${core.translate('Italian')}</option>
         </select>
-      </div>
-      <div style="margin-top:20px;">
-        <button id="signup_btn" class="route-to-signup">${core.translate('Sign up')}</button>
+        <br><br>
+        <button type="button" class="route-to-signup" id="signup-btn">${core.translate('Sign up')}</button>
       </div>
     `;
 
     const css = `
-      :host {
-        color: var(--text-color);
-        background-color: var(--main-bg-color);
-        padding: 20px;
-        display: block;
-        min-width: 320px;
-      }
-      h2 {
-        margin-top: 0;
-      }
       .error {
         color: red;
+        margin-top: 6px;
       }
     `;
 
-    this.shadowRoot = core.mount('modal_dialog', html, css);
-    this.attachEventHandlers();
-  }
+    const root = core.mount('modal_dialog', html, css);
 
-  attachEventHandlers() {
-    const usernameField = this.shadowRoot.getElementById('username');
-    const passwordField = this.shadowRoot.getElementById('password');
-    const loginBtn = this.shadowRoot.getElementById('login_btn');
-    const langSelect = this.shadowRoot.getElementById('lang_select');
-    const signupBtn = this.shadowRoot.getElementById('signup_btn');
+    // Set default language
+    const languageSelect = root.getElementById('language-select');
+    if (languageSelect) {
+      languageSelect.value = this.language;
+      languageSelect.addEventListener('change', (e) => {
+        const lang = e.target.value;
+        core.route('set_language', lang);
+      });
+    }
 
-    loginBtn.addEventListener('click', () => {
-      const uname = usernameField.value.trim();
-      const pwd = passwordField.value;
-      this.core.route('logged_in', uname, pwd);
-    });
+    // Login button handler
+    const loginBtn = root.getElementById('login-btn');
+    if (loginBtn) {
+      loginBtn.addEventListener('click', () => {
+        const username = root.getElementById('username').value.trim();
+        const password = root.getElementById('password').value;
+        core.route('logged_in', username, password);
+      });
+    }
 
-    langSelect.addEventListener('change', (e) => {
-      const langCode = e.target.value;
-      this.core.route('set_language', langCode);
-    });
-
-    signupBtn.addEventListener('click', () => {
-      this.core.route('signup');
-    });
+    // Signup button handler
+    const signupBtn = root.getElementById('signup-btn');
+    if (signupBtn) {
+      signupBtn.addEventListener('click', () => {
+        core.route('signup');
+      });
+    }
   }
 }

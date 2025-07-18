@@ -20,10 +20,7 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
-async function core.loadTranslations(language_code) - load translations for a particular language
-language_code - an ISO language code, for example "en_us" or "en_gb", or null for the default
-
-function core.translate(string) - Translate a string into the user's language.
+function core.translate(string) - Translate a literal string into the user's language.
 
 ## Core properties
 

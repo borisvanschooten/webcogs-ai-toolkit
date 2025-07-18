@@ -12,12 +12,28 @@
         "translation": "Wachtwoord"
     },
     {
+        "source": "Language",
+        "translation": "Taal"
+    },
+    {
+        "source": "English",
+        "translation": "Engels"
+    },
+    {
+        "source": "Dutch",
+        "translation": "Nederlands"
+    },
+    {
+        "source": "Italian",
+        "translation": "Italiaans"
+    },
+    {
         "source": "Signup",
         "translation": "Aanmelden"
     },
     {
         "source": "Submit ticket",
-        "translation": "Stuur ticket in"
+        "translation": "Ticket indienen"
     },
     {
         "source": "Tickets",
@@ -32,8 +48,8 @@
         "translation": "Statistieken"
     },
     {
-        "source": "Unknown user",
-        "translation": "Onbekende gebruiker"
+        "source": "Loading...",
+        "translation": "Laden..."
     },
     {
         "source": "Logout",
@@ -104,12 +120,20 @@
         "translation": "Ontwikkelaar"
     },
     {
-        "source": "Submit",
-        "translation": "Indienen"
+        "source": "Cancel",
+        "translation": "Annuleren"
     },
     {
-        "source": "Select organization",
-        "translation": "Selecteer organisatie"
+        "source": "Select an organization",
+        "translation": "Kies een organisatie"
+    },
+    {
+        "source": "Unable to load organizations",
+        "translation": "Kan organisaties niet laden"
+    },
+    {
+        "source": "Please fill in all fields",
+        "translation": "Vul alstublieft alle velden in"
     },
     {
         "source": "Submit a Ticket",
@@ -120,40 +144,28 @@
         "translation": "Tekst"
     },
     {
+        "source": "Submit",
+        "translation": "Indienen"
+    },
+    {
         "source": "Please enter ticket text.",
-        "translation": "Voer alstublieft tickettekst in."
+        "translation": "Voer alstublieft de tickettekst in."
     },
     {
         "source": "Ticket submitted.",
         "translation": "Ticket ingediend."
     },
     {
-        "source": "Loading ticket",
-        "translation": "Ticket laden"
+        "source": "Ticket",
+        "translation": "Ticket"
     },
     {
         "source": "Ticket not found",
         "translation": "Ticket niet gevonden"
     },
     {
-        "source": "Error loading ticket",
-        "translation": "Fout bij het laden van ticket"
-    },
-    {
-        "source": "Unknown organization",
-        "translation": "Onbekende organisatie"
-    },
-    {
-        "source": "Ticket",
-        "translation": "Ticket"
-    },
-    {
-        "source": "Submitted by",
-        "translation": "Ingediend door"
-    },
-    {
-        "source": "Time",
-        "translation": "Tijd"
+        "source": "User organization",
+        "translation": "Gebruikersorganisatie"
     },
     {
         "source": "Status",
@@ -165,51 +177,75 @@
     },
     {
         "source": "Responses",
-        "translation": "Antwoorden"
+        "translation": "Reacties"
     },
     {
         "source": "No responses yet",
-        "translation": "Nog geen antwoorden"
+        "translation": "Nog geen reacties"
+    },
+    {
+        "source": "By",
+        "translation": "Door"
     },
     {
         "source": "Respond",
-        "translation": "Beantwoorden"
+        "translation": "Reageren"
     },
     {
-        "source": "Ticket not found.",
-        "translation": "Ticket niet gevonden."
+        "source": "Submitted by",
+        "translation": "Ingediend door"
     },
     {
-        "source": "Unknown",
-        "translation": "Onbekend"
-    },
-    {
-        "source": "Unassigned",
-        "translation": "Niet toegewezen"
+        "source": "(none)",
+        "translation": "(geen)"
     },
     {
         "source": "No responses yet.",
-        "translation": "Nog geen antwoorden."
+        "translation": "Nog geen reacties."
+    },
+    {
+        "source": "Add response",
+        "translation": "Voeg reactie toe"
+    },
+    {
+        "source": "Response text",
+        "translation": "Reactietekst"
     },
     {
         "source": "(unchanged)",
         "translation": "(ongewijzigd)"
     },
     {
-        "source": "Description",
-        "translation": "Beschrijving"
+        "source": "Please enter at least one change or some text.",
+        "translation": "Voer alstublieft minimaal één wijziging of enige tekst in."
     },
     {
-        "source": "Add Response",
-        "translation": "Voeg antwoord toe"
+        "source": "Ticket overview",
+        "translation": "Ticketoverzicht"
     },
     {
-        "source": "Tickets by status & organization",
-        "translation": "Tickets op status & organisatie"
+        "source": "Tickets by status and assigned organization",
+        "translation": "Tickets op status en toegewezen organisatie"
     },
     {
-        "source": "Tickets vs Responses - last 30 days",
-        "translation": "Tickets vs Antwoorden - laatste 30 dagen"
+        "source": "Total",
+        "translation": "Totaal"
+    },
+    {
+        "source": "Activity last 30 days",
+        "translation": "Activiteit laatste 30 dagen"
+    },
+    {
+        "source": "Unassigned",
+        "translation": "Niet toegewezen"
+    },
+    {
+        "source": "Org",
+        "translation": "Org"
+    },
+    {
+        "source": "Submitted tickets",
+        "translation": "Ingediende tickets"
     },
     {
         "source": "open",
@@ -217,7 +253,7 @@
     },
     {
         "source": "in_progress",
-        "translation": "bezig"
+        "translation": "in_uitvoering"
     },
     {
         "source": "fixed",
@@ -257,18 +293,14 @@
     },
     {
         "source": "Edit User Profile",
-        "translation": "Bewerk gebruikersprofiel"
+        "translation": "Bewerken gebruikersprofiel"
     },
     {
-        "source": "Cancel",
-        "translation": "Annuleren"
+        "source": "Unknown",
+        "translation": "Onbekend"
     },
     {
-        "source": "Loading...",
-        "translation": "Laden..."
-    },
-    {
-        "source": "All users",
-        "translation": "Alle gebruikers"
+        "source": "Organization role",
+        "translation": "Organisatierol"
     }
 ]

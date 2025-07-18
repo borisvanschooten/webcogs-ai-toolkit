@@ -33,6 +33,7 @@ CREATE TABLE Ticket (
 CREATE TABLE Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
     time DATETIME NOT NULL,
     assigned_to TEXT,
     status TEXT,

@@ -12,7 +12,23 @@
         "translation": "Password"
     },
     {
-        "source": "Sign up",
+        "source": "Language",
+        "translation": "Lingua"
+    },
+    {
+        "source": "English",
+        "translation": "Inglese"
+    },
+    {
+        "source": "Dutch",
+        "translation": "Olandese"
+    },
+    {
+        "source": "Italian",
+        "translation": "Italiano"
+    },
+    {
+        "source": "Signup",
         "translation": "Registrati"
     },
     {
@@ -32,8 +48,8 @@
         "translation": "Statistiche"
     },
     {
-        "source": "Unknown user",
-        "translation": "Utente sconosciuto"
+        "source": "Loading...",
+        "translation": "Caricamento..."
     },
     {
         "source": "Logout",
@@ -72,6 +88,10 @@
         "translation": "Assegnato a"
     },
     {
+        "source": "Sign up",
+        "translation": "Registrati"
+    },
+    {
         "source": "Email",
         "translation": "Email"
     },
@@ -100,12 +120,20 @@
         "translation": "Sviluppatore"
     },
     {
-        "source": "Submit",
-        "translation": "Invia"
+        "source": "Cancel",
+        "translation": "Annulla"
     },
     {
-        "source": "Select organization",
-        "translation": "Seleziona organizzazione"
+        "source": "Select an organization",
+        "translation": "Seleziona un'organizzazione"
+    },
+    {
+        "source": "Unable to load organizations",
+        "translation": "Impossibile caricare le organizzazioni"
+    },
+    {
+        "source": "Please fill in all fields",
+        "translation": "Si prega di compilare tutti i campi"
     },
     {
         "source": "Submit a Ticket",
@@ -116,40 +144,28 @@
         "translation": "Testo"
     },
     {
+        "source": "Submit",
+        "translation": "Invia"
+    },
+    {
         "source": "Please enter ticket text.",
-        "translation": "Per favore inserisci il testo del ticket."
+        "translation": "Si prega di inserire il testo del ticket."
     },
     {
         "source": "Ticket submitted.",
         "translation": "Ticket inviato."
     },
     {
-        "source": "Loading ticket",
-        "translation": "Caricamento ticket"
+        "source": "Ticket",
+        "translation": "Ticket"
     },
     {
         "source": "Ticket not found",
         "translation": "Ticket non trovato"
     },
     {
-        "source": "Error loading ticket",
-        "translation": "Errore nel caricamento del ticket"
-    },
-    {
-        "source": "Unknown organization",
-        "translation": "Organizzazione sconosciuta"
-    },
-    {
-        "source": "Ticket",
-        "translation": "Ticket"
-    },
-    {
-        "source": "Submitted by",
-        "translation": "Inviato da"
-    },
-    {
-        "source": "Time",
-        "translation": "Tempo"
+        "source": "User organization",
+        "translation": "Organizzazione utente"
     },
     {
         "source": "Status",
@@ -165,39 +181,43 @@
     },
     {
         "source": "No responses yet",
-        "translation": "Nessuna risposta ancora"
+        "translation": "Nessuna risposta per ora"
+    },
+    {
+        "source": "By",
+        "translation": "Da"
     },
     {
         "source": "Respond",
         "translation": "Rispondi"
     },
     {
-        "source": "Ticket not found.",
-        "translation": "Ticket non trovato."
+        "source": "Submitted by",
+        "translation": "Inviato da"
     },
     {
-        "source": "Unknown",
-        "translation": "Sconosciuto"
-    },
-    {
-        "source": "Unassigned",
-        "translation": "Non assegnato"
+        "source": "(none)",
+        "translation": "(nessuno)"
     },
     {
         "source": "No responses yet.",
-        "translation": "Nessuna risposta ancora."
+        "translation": "Nessuna risposta per ora."
+    },
+    {
+        "source": "Add response",
+        "translation": "Aggiungi risposta"
+    },
+    {
+        "source": "Response text",
+        "translation": "Testo della risposta"
     },
     {
         "source": "(unchanged)",
-        "translation": "(immutato)"
+        "translation": "(invariato)"
     },
     {
-        "source": "Description",
-        "translation": "Descrizione"
-    },
-    {
-        "source": "Add Response",
-        "translation": "Aggiungi risposta"
+        "source": "Please enter at least one change or some text.",
+        "translation": "Si prega di inserire almeno una modifica o un testo."
     },
     {
         "source": "Ticket overview",
@@ -213,7 +233,11 @@
     },
     {
         "source": "Activity last 30 days",
-        "translation": "Attività ultime 30 giorni"
+        "translation": "Attività ultimi 30 giorni"
+    },
+    {
+        "source": "Unassigned",
+        "translation": "Non assegnato"
     },
     {
         "source": "Org",
@@ -229,7 +253,7 @@
     },
     {
         "source": "in_progress",
-        "translation": "in corso"
+        "translation": "in progress"
     },
     {
         "source": "fixed",
@@ -269,14 +293,14 @@
     },
     {
         "source": "Edit User Profile",
-        "translation": "Modifica profilo utente"
+        "translation": "Modifica Profilo Utente"
     },
     {
-        "source": "Cancel",
-        "translation": "Annulla"
+        "source": "Unknown",
+        "translation": "Sconosciuto"
     },
     {
         "source": "Organization role",
-        "translation": "Ruolo dell'organizzazione"
+        "translation": "Ruolo nell'organizzazione"
     }
 ]

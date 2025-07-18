@@ -4,7 +4,7 @@
   --button-bg-color: #bbf;
   --button-text-color: #006;
   --highlight-ticket-bg-color: #fcc;
-  --mainmenu-item-selected-bg-color: #66f;
+  --mainmenu-item-selected-bg-color: #88f;
 }
 
 /* Use UL/LI with the following classes for mainmenu */
@@ -12,8 +12,12 @@ ul.mainmenu {
   list-style: none;
   display: flex;
   gap: 15px;
-  background-color: #222;
   margin: 8px;
+  padding: 0px;
+  padding-left: 90px;
+  background-image: url('images/logo40-title.png');
+  background-repeat: no-repeat;
+  background-position: 0% 50%;
 }
 li.mainmenu-item {
   cursor: pointer;
@@ -26,6 +30,8 @@ li.mainmenu-item {
     ul.mainmenu {
         display: block;
         height: auto;
+        background: none;
+        padding-left: 0px;
     }
 }
 
@@ -65,6 +71,7 @@ div.organization-avatar.id-5 {
 div.organization-avatar.id-6 {
   background-color: #f4f;
 }
+
 input[type="text"], input[type="email"], input[type="password"] {
   width: 100%;
   min-width: 300px;
@@ -73,20 +80,47 @@ input[type="text"], input[type="email"], input[type="password"] {
 select {
   background-color: var(--button-bg-color);
   font-size: 18px;
+  border: 2px solid #88c;
   padding: 4px;
+  margin: 4px;
+  border-radius: 4px;
 }
+
 button {
   background-color: var(--button-bg-color);
   color: var(--button-text-color);
   padding: 4px 12px;
   font-size: 18px;
   cursor: pointer;
+  border: 2px solid #88c;
+  border-radius: 4px;
+  box-shadow: 4px 4px 4px rgba(0,0,0,0.1);
 }
 button.route-to-signup {
   border: none;
   background-color: transparent;
   font-weight: bold;
+  text-decoration: underline;
+  box-shadow: none;
 }
-pre {
+
+/* use pre.ticket-text to show the content of ticket and response text */
+pre, pre.ticket-text {
   white-space: pre-wrap;
+  font-family: Arial, sans-serif;
+  background: #eee;
+  padding: 10px;
+  border: 1px solid #aaa;
+}
+
+div.login-screen-title {
+  font-size: 22px;
+  font-weight: bold;
+  background-image: url('images/logo40.png');
+  height: 40px;
+  line-height: 40px;
+  background-repeat: no-repeat;
+  background-position: 0% 50%;
+  padding-left: 80px;
+  margin-bottom: 10px;
 }

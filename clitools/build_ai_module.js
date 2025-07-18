@@ -152,6 +152,13 @@ async function runCommand() {
         if (!buildTargets.includes("all") && !buildTargets.includes(prompts.user_prompts[i].name)) continue;
         if (command == "build") {
             await build(i,false)
+        } else if (command == "build-parallel") {
+            // unofficial parallel build command until we have something better
+            build(i,false).then( ((name) => {
+                return function() {
+                    console.log(`Build ${name} finished.`)
+                }
+            })(prompts.user_prompts[i].name))
         } else if (command == "build-changed") {
             await build(i,true)
         } else if (command == "diff") {

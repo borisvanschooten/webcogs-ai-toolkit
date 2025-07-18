@@ -139,7 +139,7 @@ A plugin always consists of a single class with a constructor that initialises t
 A translate tool based on gettext style translation is now available.  Basically you wrap all literal texts in your code in a function, and the function will translate it if there's a translation table available. The core functions for this are:
 
 - core.translate(text)
-- core.loadTranslations(filename)
+- core.loadTranslations(language_code)
 
 The example app has multilinguality.  The following prompt is used to instruct the AI:
 
