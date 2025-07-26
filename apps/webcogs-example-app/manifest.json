@@ -49,7 +49,7 @@
 		},
 		{
 			"name": "sidebar_tickets",
-			"prompts": [ { "text": "Create a sidebar widget that shows two vertical lists of tickets, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  The first list shows all tickets assigned to the logged in user's organization and with status=open. The second list shows all tickets submitted by the logged in user, and with status=open or status=in_progress. " } ],
+			"prompts": [ { "text": "Create a sidebar widget that shows two vertical lists of tickets, descendingly sorted by date. Show ticket number and text, submitted date, the user who submitted the ticket, and the organization it was assigned to, or 'None' if NULL.  If you click on a ticket, route to ticket_overview, with as custom parameter the ticket ID.  The first list shows all tickets assigned to the logged in user's organization. The second list shows all tickets submitted by the logged in user.  Both lists should show only tickets with status=open or status=in_progress." } ],
 			"file": "sidebar_tickets/plugin.js"
 		},
 		{

@@ -33,4 +33,4 @@ Users should be shown like this: first_name surname (@username).
 
 Ticket should be shown like this: Ticket #ticket_id.
 
-This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+This is a multilingual application. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.

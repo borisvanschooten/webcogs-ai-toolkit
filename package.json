@@ -1,8 +1,9 @@
 {
   "name": "webcogs",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "bin": {
-    "buildcog": "./clitools/build_ai_module.js"
+    "buildcog": "./clitools/build_ai_module.js",
+    "updatecogsinplace": "./clitools/update_functions_inplace.js"
   },
   "dependencies": {
     "browserify": "^17.0.1",

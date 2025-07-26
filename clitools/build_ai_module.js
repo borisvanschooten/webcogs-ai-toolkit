@@ -58,7 +58,9 @@ function generatePromptsFromManifest(manifest, baseDir = '.', targetBaseDir = ".
 }
 
 function getPromptSpec(i) {
-    var prompt = "@webcogs_system_prompt\n" + prompts.system_prompt
+    // TODO get version from manifest?
+    var prompt = `@webcogs_build 0.2.0 openai-${getModel()} ${new Date().toISOString()}\n`
+            + "@webcogs_system_prompt\n" + prompts.system_prompt
             + "\n@webcogs_user_prompt\n" + prompts.user_prompts[i].text
             + "\n@webcogs_end_prompt_section"
     // escape comments
@@ -73,7 +75,7 @@ function getOldPrompt(target) {
     try {
         oldContent = fs.readFileSync(target, 'utf8');
     } catch (err) {
-        console.log(`Cannot read target file "${target}".`.bgRed);
+        console.log(`Cannot read target file "${target}".`.bgRed.white);
         return null;
     }
     const endIndex = oldContent.indexOf("@webcogs_end_prompt_section*/\n");
@@ -83,9 +85,13 @@ function getOldPrompt(target) {
         const sliceIndex = oldContent.indexOf(endTag) + endTag.length;
         return oldContent.slice(0, sliceIndex).replaceAll("\r\n","\n");
     } else {
-        console.log(`Target file "${target} does not have a prompt section.`.bgRed);
+        console.log(`Target file "${target} does not have a prompt section.`.bgRed.white);
         return null;
     }
+}
+
+function getModel() {
+    return manifest.model ? manifest.model : "o3"
 }
 
 async function build(i,updateOnly) {
@@ -118,7 +124,7 @@ async function build(i,updateOnly) {
             "content": prompts.user_prompts[i].text,
         }
     ]
-    var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,manifest.model ? manifest.model : "o3",2,null,2000)
+    var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,getModel(),2,null,2000)
     //console.log(output)
     //console.log(messages)
 }
@@ -132,7 +138,7 @@ function diff(i) {
         return;
     }
     if (old_prompt != new_prompt) {
-        console.log(`Prompt differs in target file "${target}":`.bgBlue);
+        console.log(`Prompt differs in target file "${target}":`.bgBlue.white);
         const diff = diffChars(old_prompt, new_prompt);
         diff.forEach((part) => {
             // green for additions, red for deletions
@@ -143,7 +149,7 @@ function diff(i) {
         });
         //process.stdout.write("\n")
     } else {
-        console.log(`Prompt is unchanged in target file "${target}."`.bgBlue);
+        console.log(`Prompt is unchanged in target file "${target}."`.bgBlue.white);
     }
 }
 
