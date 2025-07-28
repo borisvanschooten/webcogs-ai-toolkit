@@ -5,6 +5,9 @@
     "buildcog": "./clitools/build_ai_module.js",
     "updatecogsinplace": "./clitools/update_functions_inplace.js"
   },
+  "exports": {
+    "." : "./js/index.js"
+  },
   "dependencies": {
     "browserify": "^17.0.1",
     "colors": "^1.4.0",
@@ -14,6 +17,9 @@
     "jsonwebtoken": "^9.0.2",
     "openai": "^5.1.1",
     "sql.js": "^1.13.0"
+  },
+  "scripts": {
+    "pack": "npm pack"
   },
   "devDependencies": {
     "xgettext-js": "^3.0.0"

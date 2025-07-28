@@ -9,7 +9,7 @@ var OpenAI = require("openai")
 const {diffChars} = require('diff')
 
 const callLLM = require('../js/call_llm.js')
-const secrets = require("../secrets.js")
+//const secrets = require("../secrets.js")
 
 /**
  * Given an array of prompts (each with "file" or "text"),
@@ -179,6 +179,13 @@ async function runCommand() {
 // -----------------------------------------------------------------------------
 // Main build script
 
+if (!process.env.OPENAI_API_KEY) {
+    console.error('Error: Environment variable "OPENAI_API_KEY" is not set.');
+    process.exit(1);
+}
+
+
+
 if (process.argv.length < 5) {
     console.error('Usage: buildcog  <command>  <build targets>  <prompt manifest json file>.\n    Command is one of: diff, build, build-changed.\n    Build targets is a list of targets or "all" for all targets.');
     process.exit(1);
@@ -206,7 +213,8 @@ var prompts = generatePromptsFromManifest(manifest, baseDir, targetBaseDir)
 //console.log(prompts)
 
 
-var client = new OpenAI.OpenAI({apiKey: secrets.openai_apikey})
+var client = new OpenAI.OpenAI({apiKey: process.env.OPENAI_API_KEY})
+
 
 const tools = [
 	{
@@ -231,7 +239,6 @@ const tools = [
 		}
 	},
 ];
-
 
 
 runCommand()

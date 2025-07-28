@@ -28,7 +28,7 @@ To regenerate the browser bundle, first install node.js and npm.  Then install b
 
 ## Webcogs app building toolkit: using the LLM as a compiler
 
-I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and unreliable) compiler* that compiles specifications into code, without having to revert to idiosyncratic prompt engineering.  However, this only works if the prompt is small and clear enough, without distractions, and the subject matter is sufficiently well-known.  The current generation of AI coding tools and agents are not good enough to build or maintain large software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
+I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and unreliable) compiler* that compiles specifications into code, without having to revert to idiosyncratic prompt engineering.  However, this only works if the prompt is small and clear enough, written in sufficiently technical language, is without distractions, and the subject matter is sufficiently well-known.  The current generation of AI coding tools and agents are not good enough to build or maintain large software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
 
 The Webcogs toolkit is basically an AI-oriented software engineering experiment to find out what works and what doesn't.  First of all, it is based on the *prompts-as-code* principle.  Normally, developers write a prompt to generate code, then they keep the code, but throw away the prompt.  The prompts-as-code concept turns this around: prompts are specifications, so they should not only be kept, but also managed using software engineering principles, such as modularity and version control.  The more prompts are treated as first-class citizens, the more easily code can be re-generated reliably.
 
@@ -37,9 +37,18 @@ The envisioned development process looks something like this: software is subdiv
 The Webcogs app building toolkit provides experimental solutions in two key areas:
 
 - Language and framework agnostic build tools, which support modular prompt structuring. This allows building a prompt out of select parts of the core specifications, such as API docs and SQL and CSS definitions, along with module-specific prompt text.  It also includes a diff tool which shows differences between the current prompt and the prompt with which particular code was generated.  It makes it easier to update AI generated code when specifications are updated, and fix issues with the AI generated code with prompt engineering rather than direct changes in the code.  Currently two command line tools are provided, with a VS code extension on the way:
-  - buildcog - Build and diff single-file modules.  Reads prompts from a prompt manifest that contains specifications for a set of modules, enabling handling of multiple modules with a single command. 
-  - updatecoginplace - Modify files containing @webcog directives, which allow specific comments to be interpreted as prompts, and insert generated code at particular places while leaving the rest of the file as-is.
+  - **buildcog** - Build and diff single-file modules.  Reads prompts from a prompt manifest that contains specifications for a set of modules, enabling handling of multiple modules with a single command. 
+  - **updatecogsinplace** - Modify files containing @webcogs directives, which allow specific comments to be interpreted as prompts, and insert generated code at particular places while leaving the rest of the file as-is.
 - a framework that provides specific ways to structure your software in an AI friendly way, in particular a core/plugin structure for web apps, and a translation tool. The core app is a HTML single page application, where the plugins handle specific pages and widgets.
+
+
+### Passing OpenAI API key
+
+You can pass the API key for OpenAI calls via the environment variable **OPENAI_API_KEY**. E.g. in Bash:
+
+```
+export OPENAI_API_KEY=sk-proj-xxxxxxxxxxxx
+```
 
 
 ### Using buildcog + a prompt manifest to generate code in separate files
@@ -92,7 +101,7 @@ Prompt manifest format is as follows:
 
 ai_vendor and ai_model refer to the LLM to use. Currently only openai is supported.  In system_prompts you can define a series of prompts. They are simply concatenated and fed into the LLM as the system prompt.  In targets you can define multiple build targets, each with its own prompts and output file.  For each build target, you can again define a series of prompts which are concatenated to form the user prompt used to generate the code. 
 
-The buildcog command line tool can now be used to build targets.  You first have to pass the OpenAI API key in a secrets.js file. See secrets-example.js for an example.  Once you defined the key, you can use the following command to re-generate plugins for the example app:
+The buildcog command line tool can now be used to build targets.  For example, you can use the following command to re-generate plugins for the example app:
 
 ```
 buildcog build <target_name> [<target name> ... ] apps/webcogs-example-app/manifest.json

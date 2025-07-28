@@ -1,5 +1,6 @@
-// XXX still relies on globals generated_tools, generated_functions, disabled_tools
-async function callLLM(client,messages,tools,aifnPrefix,generated_functions,modelName="o3",nrTries=20,showToolCallsElem="response",truncateResult=2000) {
+// XXX still uses globals: generated_tools, disabled_tools, but also works without them
+// available_functions is an object with the function names as fields
+async function callLLM(client,messages,tools,aifnPrefix,available_functions,modelName="o3",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
 	var outputString = ""
 	while (nrTries >= 0) {
 		nrTries--
@@ -19,6 +20,7 @@ async function callLLM(client,messages,tools,aifnPrefix,generated_functions,mode
 			model: modelName,
 			tools: enabledtools,
 			messages,
+			tool_choice,
 		});
 		msg = completion.choices[0].message
 		messages.push(msg)
@@ -51,8 +53,8 @@ async function callLLM(client,messages,tools,aifnPrefix,generated_functions,mode
 					if (typeof window != "undefined" && window[aifnPrefix+fn]) {
 						result = await window[aifnPrefix+fn](unpackedArgs)
 						funcCalled = true;
-					} else if (generated_functions[fn]) {
-						result = await generated_functions[fn](unpackedArgs)
+					} else if (available_functions[fn]) {
+						result = await available_functions[fn](unpackedArgs)
 						funcCalled = true;
 					} else {
 						errorMessage = `Failure: Function ${fn} does not exist.`
