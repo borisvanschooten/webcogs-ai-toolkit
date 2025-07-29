@@ -1,8 +1,8 @@
 /*
-@webcogs_system_prompt
-@webcogs_include "backend.md"
+@cogs_system_prompt
+@cogs_include "backend.md"
 ## MySQL data structure
-@webcogs_include "../../webcogs-example-app/datamodel.sql"
+@cogs_include "../../webcogs-example-app/datamodel.sql"
 */
 
 //Section 1:
@@ -16,7 +16,7 @@ var core = new MyCore(db)
 
 /* This multiline comment should remain untouched */
 
-/*@webcogs_func getTicketsByOrganization
+/*@cogs_func getTicketsByOrganization
 Returns all tickets assigned to a particular organization. Includes info on the user it was submitted by and the organization it was assigned to.
 @param core
 @param organization_id
@@ -26,7 +26,7 @@ Returns all tickets assigned to a particular organization. Includes info on the 
 //AI GENERATED CODE SECTION 1
 /* everything here should be replaced by the AI generated function */
 
-/*@webcogs_endfunc*/
+/*@cogs_endfunc*/
 
 //Section 2:
 //THIS SHOULD REMAIN UNTOUCHED 
@@ -37,7 +37,7 @@ var tickets = getTicketsByOrganization(core,org_id)
 console.log(tickets)
 
 
-/*@webcogs_func getTicketsByStatus
+/*@cogs_func getTicketsByStatus
 Returns all tickets with a particular status, ordererd descending by time.
 @param core
 @param status
@@ -45,7 +45,7 @@ Returns all tickets with a particular status, ordererd descending by time.
 */
 //AI GENERATED CODE SECTION 2
 // Self-closing function, webcogs_endfunc should be added below
-/*@webcogs_func getUsers
+/*@cogs_func getUsers
 Returns all users and their organization info, sorted alphabetically by surname. If sort_order is by_organization, first order by organization ID, then alphabetically by surname.
 @param core
 @param sort_order - "alphabetically" or "by_organization"

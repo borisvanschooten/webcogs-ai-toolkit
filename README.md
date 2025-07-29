@@ -38,7 +38,7 @@ The Webcogs app building toolkit provides experimental solutions in two key area
 
 - Language and framework agnostic build tools, which support modular prompt structuring. This allows building a prompt out of select parts of the core specifications, such as API docs and SQL and CSS definitions, along with module-specific prompt text.  It also includes a diff tool which shows differences between the current prompt and the prompt with which particular code was generated.  It makes it easier to update AI generated code when specifications are updated, and fix issues with the AI generated code with prompt engineering rather than direct changes in the code.  Currently two command line tools are provided, with a VS code extension on the way:
   - **buildcog** - Build and diff single-file modules.  Reads prompts from a prompt manifest that contains specifications for a set of modules, enabling handling of multiple modules with a single command. 
-  - **updatecogsinplace** - Modify files containing @webcogs directives, which allow specific comments to be interpreted as prompts, and insert generated code at particular places while leaving the rest of the file as-is.
+  - **updatecogsinplace** - Modify files containing @cogs directives, which allow specific comments to be interpreted as prompts, and insert generated code at particular places while leaving the rest of the file as-is.
 - a framework that provides specific ways to structure your software in an AI friendly way, in particular a core/plugin structure for web apps, and a translation tool. The core app is a HTML single page application, where the plugins handle specific pages and widgets.
 
 
@@ -148,10 +148,10 @@ A file with webcogs directives looks like this:
 
 ```javascript
 /*
-@webcogs_system_prompt
-@webcogs_include "backend.md"
+@cogs_system_prompt
+@cogs_include "backend.md"
 ## MySQL data structure
-@webcogs_include "../../webcogs-example-app/datamodel.sql"
+@cogs_include "../../webcogs-example-app/datamodel.sql"
 */
 
 /* Manually managed code */
@@ -161,16 +161,16 @@ var db = new SQLDb("/db/run","my_auth_cookie")
 var core = new MyCore(db)
 [...]
 
-/**@webcogs_func getTicketsByOrganization
+/**@cogs_func getTicketsByOrganization
 * Returns all tickets assigned to a particular organization. Includes info on the user it was submitted by and the organization it was assigned to.
 * @param core
 * @param organization_id
 * @returns array of {ticket_id,ticket_text,ticket_time,ticket_status, user_id, username, user_email, organization_id, organization_name}
 */
 
-/* The section between @webcogs_func and @webcogs_endfunc will be replaced with AI generated code. */
+/* The section between @cogs_func and @cogs_endfunc will be replaced with AI generated code. */
 
-/*@webcogs_endfunc*/
+/*@cogs_endfunc*/
 
 /* More manually managed code */
 
@@ -179,15 +179,15 @@ console.log(tickets)
 [...]
 ```
 
-All directives start with **@webcogs** and are inside multiline comments. Single-line comments are ignored.  At the top of the file, there is a **@webcogs_system_prompt**.  Everything in the comment after this directive is taken literally as the system prompt, except for **@webcogs_include "\<filepath\>"** which can be used to include a file at that position.  You can have multiple system prompt sections, which are simply concatenated.  System prompts will only be used for functions that are lexically below them.
+All directives start with **@cogs** and are inside multiline comments. Single-line comments are ignored.  At the top of the file, there is a **@cogs_system_prompt**.  Everything in the comment after this directive is taken literally as the system prompt, except for **@cogs_include "\<filepath\>"** which can be used to include a file at that position.  You can have multiple system prompt sections, which are simply concatenated.  System prompts will only be used for functions that are lexically below them.
 
-For every to-be-generated function, you add a **@webcogs_func <funcname>** directive.  Everything in the comment below the directive is taken as part of the user prompt to generate a function.  Again, **@webcogs_include "\<filepath\>"** can be used to include files. Note that the docs are just JSDoc style documentation, using directives like @param and @returns, which most LLMs handle well.  The user prompt is prefixed with the following fixed prompt:
+For every to-be-generated function, you add a **@cogs_func <funcname>** directive.  Everything in the comment below the directive is taken as part of the user prompt to generate a function.  Again, **@cogs_include "\<filepath\>"** can be used to include files. Note that the docs are just JSDoc style documentation, using directives like @param and @returns, which most LLMs handle well.  The user prompt is prefixed with the following fixed prompt:
 
 > Create a function named '"+funcname+"' according to the following specifications.  These must specify the function parameters and format of the return value precisely and unambiguously. If the function parameters or return value are not clear, call report_error instead of create_function. Do not write function documentation. Only call tools, do not explain what you have done.
 
-So, the AI is expressly told to check if the docs are precise enough, and produce an error if not.  The error will show up as a single-line comment starting with **@webcogs_func_error**, where the generated code would normally be placed.  This produces quite meaningful error messages in my experience.  Without this instruction, the AI will usually try to guess what the user wants, even if the prompt obviously contains errors or ambiguities.
+So, the AI is expressly told to check if the docs are precise enough, and produce an error if not.  The error will show up as a single-line comment starting with **@cogs_func_error**, where the generated code would normally be placed.  This produces quite meaningful error messages in my experience.  Without this instruction, the AI will usually try to guess what the user wants, even if the prompt obviously contains errors or ambiguities.
 
-When code is generated, it is inserted between **@webcogs_func** and the next multiline comment that contains the directive **@webcogs_endfunc**.  So, if you forget the **@webcogs_endfunc**, it may replace the contents of the entire file, so be careful not to forget them.  Note that **@webcogs_func** is "self-closing", HTML tag style.  A new comment containing **@webcogs_func** will automatically close the previous function section, and **@webcogs_endfunc** is added automatically at generation.
+When code is generated, it is inserted between **@cogs_func** and the next multiline comment that contains the directive **@cogs_endfunc**.  So, if you forget the **@cogs_endfunc**, it may replace the contents of the entire file, so be careful not to forget them.  Note that **@cogs_func** is "self-closing", HTML tag style.  A new comment containing **@cogs_func** will automatically close the previous function section, and **@cogs_endfunc** is added automatically at generation.
 
 Once you have created a source file with the right directives in place, you can generate the code using the following command:
 
@@ -195,11 +195,17 @@ Once you have created a source file with the right directives in place, you can 
 updatecogsinplace <funcname> [ <funcname> ... ] <filename>
 ```
 
-The current version will not overwrite the original file, but create a new file \<filename\>-generated.js.  This will be changed when the tool is more mature.  Also I am working on a VSCode plugin which adds CodeLens buttons to generate each specific function. Note you can use "all" to generate all functions. There is an example with webcogs directives in the folder *apps/test-inplace*.  For example, you can generate the *getUsers* function with the following command:
+The current version will not overwrite the original file, but create a new file \<filename\>-generated.js.  This will be changed when the tool is more mature.  Note you can use "all" to generate all functions. There is an example with webcogs directives in the folder *apps/test-inplace*.  For example, you can generate the *getUsers* function with the following command:
 
 ```
 updatecogsinplace getUsers apps/test-inplace/backend/index.js
 ```
+
+#### updatecogsinplace VSCode extension
+
+There is now a VSCode extension, which is a separate node package in the folder *vscode-extension/webcogs/*.  This extension adds a codelens for each @cogs_func directive, allowing you to generate each function from the editor with click of a button.
+
+This is not on the marketplace yet, but you can install it via a WSIX file.  For more instructions, see *vscode-extension/webcogs/README.md*.
 
 ### WebCogsCore HTML app framework
 
