@@ -37,7 +37,7 @@ class UpdateCogsInPlace {
 	}
 	addText(text) {
 		// TODO get version from package.json?
-		var diffText = `//@cogs_build 0.3.0 ${this.vendor}-${this.model} ${new Date().toISOString()}\n`
+		var diffText = `//@cogs_build 0.3.1 ${this.vendor}-${this.model} ${new Date().toISOString()}\n`
 		diffText += text
 		var diffStart = this.newFileContent.split('\n').length;
 		this.newFileContent += "\n"+diffText

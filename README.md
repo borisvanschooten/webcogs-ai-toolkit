@@ -28,11 +28,11 @@ To regenerate the browser bundle, first install node.js and npm.  Then install b
 
 ## Webcogs app building toolkit: using the LLM as a compiler
 
-I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and unreliable) compiler* that compiles specifications into code, without having to revert to idiosyncratic prompt engineering.  However, this only works if the prompt is small and clear enough, written in sufficiently technical language, is without distractions, and the subject matter is sufficiently well-known.  The current generation of AI coding tools and agents are not good enough to build or maintain large software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
+I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and unreliable) compiler* that compiles specifications into code.  However, this only works for small coding tasks (e.g. single functions and classes), and if the prompt is small and clear enough, and written in sufficiently technical language.  The current generation of AI coding tools and agents are really not good enough to build or maintain larger software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
 
-The Webcogs toolkit is basically an AI-oriented software engineering experiment to find out what works and what doesn't.  First of all, it is based on the *prompts-as-code* principle.  Normally, developers write a prompt to generate code, then they keep the code, but throw away the prompt.  The prompts-as-code concept turns this around: prompts are specifications, so they should not only be kept, but also managed using software engineering principles, such as modularity and version control.  The more prompts are treated as first-class citizens, the more easily code can be re-generated reliably.
+The Webcogs toolkit is basically an AI-oriented software engineering experiment.  First of all, it is based on the *prompts-as-code* principle.  Normally, developers write a prompt to generate code, then they keep the code, but throw away the prompt.  The prompts-as-code concept turns this around: prompts are specifications, so they should not only be kept, but also managed using software engineering principles, such as modularity and version control.  The more prompts are treated as first-class citizens, the more easily code can be re-generated reliably.
 
-The envisioned development process looks something like this: software is subdivided into modules, some of which are fully AI-generated, while others are manually managed. The AI-generated modules are still tested and inspected by the developers, so this is not like vibe coding. Problems with generated modules can be resolved by improving the prompts rather than direct code editing.
+The envisioned development process looks something like this: software is manually subdivided into modules, some of which are fully AI-generated, while others are manually managed. The AI-generated modules are still tested and inspected by the developers, so this is not like vibe coding. Problems with generated code are preferably resolved by improving the prompts or restructuring the software, rather than direct editing of generated code.
 
 The Webcogs app building toolkit provides experimental solutions in two key areas:
 
@@ -183,7 +183,7 @@ All directives start with **@cogs** and are inside multiline comments. Single-li
 
 For every to-be-generated function, you add a **@cogs_func <funcname>** directive.  Everything in the comment below the directive is taken as part of the user prompt to generate a function.  Again, **@cogs_include "\<filepath\>"** can be used to include files. Note that the docs are just JSDoc style documentation, using directives like @param and @returns, which most LLMs handle well.  The user prompt is prefixed with the following fixed prompt:
 
-> Create a function named '"+funcname+"' according to the following specifications.  These must specify the function parameters and format of the return value precisely and unambiguously. If the function parameters or return value are not clear, call report_error instead of create_function. Do not write function documentation. Only call tools, do not explain what you have done.
+> Create a function named '"+funcname+"' according to the following specifications.  These must specify the function parameters and format of the return value precisely and unambiguously. If the function parameters or return value are not clear, call report_error instead of create_function. [...]
 
 So, the AI is expressly told to check if the docs are precise enough, and produce an error if not.  The error will show up as a single-line comment starting with **@cogs_func_error**, where the generated code would normally be placed.  This produces quite meaningful error messages in my experience.  Without this instruction, the AI will usually try to guess what the user wants, even if the prompt obviously contains errors or ambiguities.
 
@@ -203,9 +203,9 @@ updatecogsinplace getUsers apps/test-inplace/backend/index.js
 
 #### updatecogsinplace VSCode extension
 
-There is now a VSCode extension, which is a separate node package in the folder *vscode-extension/webcogs/*.  This extension adds a codelens for each @cogs_func directive, allowing you to generate each function from the editor with click of a button.
+There is now a VSCode extension, which is a separate node package in the folder *vscode-extension/webcogs/*.  This extension adds a codelens for each @cogs_func directive, allowing you to generate each function from the editor with a single click.
 
-This is not on the marketplace yet, but you can install it via a WSIX file.  For more instructions, see *vscode-extension/webcogs/README.md*.
+You can install it from the VSCode marketplace, or via a WSIX file.  For more instructions, see *vscode-extension/webcogs/README.md*.
 
 ### WebCogsCore HTML app framework
 

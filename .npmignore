@@ -1,5 +1,11 @@
-vscode-extension
+vscode-extension/
 secrets.js
-Attic
-aichats
-aiapps
+attic/
+aichats/
+aiapps/
+aitools/
+apps/
+*.tgz
+*.vsix
+*.swp
+*.code-workspace

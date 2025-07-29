@@ -59,7 +59,7 @@ function generatePromptsFromManifest(manifest, baseDir = '.', targetBaseDir = ".
 
 function getPromptSpec(i) {
     // TODO get version from manifest?
-    var prompt = `@webcogs_build 0.2.0 openai-${getModel()} ${new Date().toISOString()}\n`
+    var prompt = `@webcogs_build 0.3.1 openai-${getModel()} ${new Date().toISOString()}\n`
             + "@webcogs_system_prompt\n" + prompts.system_prompt
             + "\n@webcogs_user_prompt\n" + prompts.user_prompts[i].text
             + "\n@webcogs_end_prompt_section"

@@ -1,1 +1,7 @@
 node_modules/
+attic/
+aichats/
+*.tgz
+*.vsix
+*.swp
+*.code-workspace

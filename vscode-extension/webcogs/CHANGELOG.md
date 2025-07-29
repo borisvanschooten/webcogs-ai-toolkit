@@ -1,9 +1,9 @@
 # Change Log
 
-All notable changes to the "webcogs" extension will be documented in this file.
+## 0.3.0
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+Initial extension release
 
-## [Unreleased]
+# 0.3.1
 
-- Initial release
+Documentation improvements
