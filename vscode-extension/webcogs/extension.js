@@ -250,6 +250,7 @@ function activate(context) {
 				if (range !== null) {
 					editor.edit(editBuilder => {
 						editBuilder.replace(range, diff.text);
+						vscode.window.showInformationMessage(`Finished building ${funcName}.`);
 					});
 				} else {
 					console.log(`Function ${funcName} not found.`)

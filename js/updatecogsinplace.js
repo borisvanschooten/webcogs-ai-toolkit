@@ -36,8 +36,8 @@ class UpdateCogsInPlace {
 		this.fileDiffs.push({startline:null, nrlines:section.split('\n').length, text:null});
 	}
 	addText(text) {
-		// TODO get version from package.json?
-		var diffText = `//@cogs_build 0.3.1 ${this.vendor}-${this.model} ${new Date().toISOString()}\n`
+		var version = require('../package.json').version
+		var diffText = `//@cogs_build ${version} ${this.vendor}-${this.model} ${new Date().toISOString()}\n`
 		diffText += text
 		var diffStart = this.newFileContent.split('\n').length;
 		this.newFileContent += "\n"+diffText
@@ -46,13 +46,13 @@ class UpdateCogsInPlace {
 		this.fileDiffs[this.fileDiffs.length-1].text = diffText
 	}
 	create_function(args) {
-		args.source_code.replaceAll("\r\n","\n")
-		this.addText(args.source_code+"\n")
+		var code = args.source_code.replaceAll("\r\n","\n")
+		this.addText(code+"\n")
 	}
 	report_error(args) {
-		args.error_message.replaceAll("\r"," ")
-		args.error_message.replaceAll("\n"," ")
-		this.addText("//@cogs_func_error "+args.error_message+"\n")
+		var error_message = args.error_message.replaceAll("\r"," ")
+		error_message = error_message.replaceAll("\n"," ")
+		this.addText("//@cogs_func_error "+error_message+"\n")
 	}
 
 	tools = [
@@ -200,7 +200,7 @@ class UpdateCogsInPlace {
 			console.log(`>> Generating ${this.funcname}...`)
 			//console.log(system_prompt)
 			//console.log(func_prompt)
-			this.func_prompt = "Create a function named '"+this.funcname+"' according to the following specifications.  These must specify the function behaviour, parameters, and format of the return value precisely and unambiguously. If the specifications are not clear, call the report_error tool, otherwise the create_function tool. Do not write function documentation. Only call a single tool, do not explain what you have done.\n" + this.func_prompt
+			this.func_prompt = "Create a function named '"+this.funcname+"' according to the following specifications.  These must specify the function behaviour, parameters, and format of the return value precisely and unambiguously, and nothing should be omitted that prevents you from writing the full code. If not, call the report_error tool with a detailed description of the problems, otherwise the create_function tool. Do not write function documentation. Only call a single tool.  Do not explain what you have done.\n" + this.func_prompt
 			var messages = [
 				{
 					"role": "developer",

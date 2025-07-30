@@ -4,9 +4,9 @@ Part of the Webcogs open source experimental AI software engineering toolkit. Th
 
 ## Features
 
-Provides methodical **prompts-as-code** facilities that are complementary to the ad hoc prompting offered by most code generating AI tools. Instead of prompting in a chat line, then throwing away the prompts once the code is generated, prompts can be embedded in the source code.
+Provides methodical **prompts-as-code** facilities that are complementary to the ad hoc prompting offered by most code generating AI tools. Instead of prompting in a chat line, then throwing away the prompts once the code is generated, prompts can be embedded in the source code.  This allows you to *specify context more precisely and consistently*, which increases generation accuracy.  Also, you can *re-generate code easily when the specifications change*, making it easier to use AI code generation to not just create but also maintain your code. 
 
-- Put prompts directly in your source code inside comments and generate functions in place.
+- Put prompts directly in your source code inside comments and generate functions in place. Basically you write the docs, and have the AI generate your functions.
 
 - Define context via file-wide system prompts and include external files in your prompts.
 
@@ -18,9 +18,11 @@ Provides methodical **prompts-as-code** facilities that are complementary to the
 
 You have to activate the codelens from the command palette. Type Shift-Ctrl-P, then select *"Webcogs: Enable Webcogs Codelens"*. 
 
-You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*.
+You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. Note the tool uses the o3 model, which gives me good results (better than o3-mini for example), and is low-cost (about $0.01 to generate a function).
 
 There's no accept/reject dialog after generating code yet, but the code generations can be undone with regular undo (Ctrl-Z).
+
+Building a function takes around 10 seconds, but you can build multiple functions in parallel.
 
 You can augment your source files with @cogs directives inside multiline comments, which indicate prompts with which parts of your code can be generated. It currently supports **C-style multiline comments only** (without nesting), so it works for languages like Java, C, C++, C#, PHP, Javascript, Typescript, CSS. Example:
 ```javascript
@@ -83,9 +85,3 @@ vsce package
 This will create a vsix package, which you can install in VSCode:
 - go to the extensions: marketplace tab
 - in the triple dot menu, select "install from VSIX"
-
-## Release Notes
-
-### 0.3.1
-
-First release, with improved docs
