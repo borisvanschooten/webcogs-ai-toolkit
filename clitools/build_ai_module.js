@@ -9,6 +9,7 @@ var OpenAI = require("openai")
 const {diffChars} = require('diff')
 
 const callLLM = require('../js/call_llm.js')
+const {CommentParser} = require('../js/comment_parser.js') 
 //const secrets = require("../secrets.js")
 
 /**
@@ -58,19 +59,22 @@ function generatePromptsFromManifest(manifest, baseDir = '.', targetBaseDir = ".
 }
 
 function getPromptSpec(i) {
-    // TODO get version from manifest?
-    var prompt = `@webcogs_build 0.3.1 openai-${getModel()} ${new Date().toISOString()}\n`
+    var commentparser = new CommentParser(manifest.targets[i].file)
+    var version = require('../package.json').version
+    var prompt = `@webcogs_build ${version} openai-${getModel()} ${new Date().toISOString()}\n`
             + "@webcogs_system_prompt\n" + prompts.system_prompt
             + "\n@webcogs_user_prompt\n" + prompts.user_prompts[i].text
             + "\n@webcogs_end_prompt_section"
     // escape comments
+    // TODO also escape other comment types via CommentParser
     prompt = prompt.replace(/\/\*/g, '\\/*').replace(/\*\//g, '*\\/');
-    prompt = `/*${prompt}*/\n`;
+    prompt = `${commentparser.fileDelim.moduleStart}${prompt}${commentparser.fileDelim.moduleEnd}\n`;
     // normalise linebreaks
     return prompt.replaceAll("\r\n","\n")
 }
 
 function getOldPrompt(target) {
+    var commentparser = new CommentParser(target)
     let oldContent = '';
     try {
         oldContent = fs.readFileSync(target, 'utf8');
@@ -78,10 +82,10 @@ function getOldPrompt(target) {
         console.log(`Cannot read target file "${target}".`.bgRed.white);
         return null;
     }
-    const endIndex = oldContent.indexOf("@webcogs_end_prompt_section*/\n");
+    const endTag = `@webcogs_end_prompt_section${commentparser.fileDelim.moduleEnd}\n`;
+    const endIndex = oldContent.indexOf(endTag);
     if (endIndex !== -1) {
         // include '@webcogs_end_prompt_section' in the extracted string
-        const endTag = "@webcogs_end_prompt_section*/\n";
         const sliceIndex = oldContent.indexOf(endTag) + endTag.length;
         return oldContent.slice(0, sliceIndex).replaceAll("\r\n","\n");
     } else {
@@ -91,21 +95,27 @@ function getOldPrompt(target) {
 }
 
 function getModel() {
-    return manifest.model ? manifest.model : "o3"
+    return manifest.model ? manifest.model : "gpt-5"
+}
+
+function remove_build_timestamp(prompt) {
+    return prompt.replace(/@webcogs_build.*\n/,"")
 }
 
 async function build(i,updateOnly) {
     if (updateOnly) {
-        const new_prompt = getPromptSpec(i);
+        var new_prompt = getPromptSpec(i);
         const target = path.resolve(targetBaseDir, manifest.targets[i].file);
-        const old_prompt = getOldPrompt(target)
+        var old_prompt = getOldPrompt(target)
+        new_prompt = remove_build_timestamp(new_prompt)
+        old_prompt = remove_build_timestamp(old_prompt)
         if (new_prompt == old_prompt) {
             console.log(`Skipping ${manifest.targets[i].name}, no changes to prompt.`)
             return;
         }
     }
     console.log(`Building ${manifest.targets[i].name}...`)
-    function create_plugin(args) {
+    function create_class(args) {
         const target = path.resolve(targetBaseDir, manifest.targets[i].file)
         var code = getPromptSpec(i) + args.source_code
         // Ensure the directory exists
@@ -113,7 +123,7 @@ async function build(i,updateOnly) {
         fs.writeFileSync(target, code, 'utf8')
     }
     var ai_functions = {
-        "create_plugin": create_plugin,
+        "create_class": create_class,
     }
     var messages = [
         {
@@ -121,7 +131,7 @@ async function build(i,updateOnly) {
             "content": prompts.system_prompt,
         },{
             "role": "user",
-            "content": prompts.user_prompts[i].text,
+            "content": prompts.user_prompts[i].text+" Do not explain what you have done.",
         }
     ]
     var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,getModel(),2,null,2000)
@@ -130,9 +140,11 @@ async function build(i,updateOnly) {
 }
 
 function diff(i) {
-    const new_prompt = getPromptSpec(i);
+    var new_prompt = getPromptSpec(i);
     const target = path.resolve(targetBaseDir, manifest.targets[i].file);
-    const old_prompt = getOldPrompt(target)
+    var old_prompt = getOldPrompt(target)
+    new_prompt = remove_build_timestamp(new_prompt)
+    old_prompt = remove_build_timestamp(old_prompt)
     if (old_prompt === null) {
         // exception already reported
         return;
@@ -220,8 +232,8 @@ const tools = [
 	{
 		"type": "function",
 		"function": {
-			"name": "create_plugin",
-			"description": "Create a Javascript class for a plugin. It should be specified in full, do not omit any code.",
+			"name": "create_class",
+			"description": "Create a class. It should be specified in full, do not omit any code.",
 			"parameters": {
 				"type": "object",
 				"properties": {

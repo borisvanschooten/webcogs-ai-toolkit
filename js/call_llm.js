@@ -1,6 +1,6 @@
 // XXX still uses globals: generated_tools, disabled_tools, but also works without them
 // available_functions is an object with the function names as fields
-async function callLLM(client,messages,tools,aifnPrefix,available_functions,modelName="o3",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
+async function callLLM(client,messages,tools,aifnPrefix,available_functions,modelName="gpt-5",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
 	var outputString = ""
 	while (nrTries >= 0) {
 		nrTries--

@@ -1,12 +1,12 @@
 {
   "name": "webcogs",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "bin": {
     "buildcog": "./clitools/build_ai_module.js",
     "updatecogsinplace": "./clitools/update_functions_inplace.js"
   },
   "exports": {
-    "." : "./js/index.js"
+    ".": "./js/index.js"
   },
   "dependencies": {
     "browserify": "^17.0.1",
@@ -16,6 +16,7 @@
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "openai": "^5.1.1",
+    "pofile": "^1.1.4",
     "sql.js": "^1.13.0"
   },
   "scripts": {

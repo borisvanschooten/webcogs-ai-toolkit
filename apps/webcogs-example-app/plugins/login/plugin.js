@@ -1,4 +1,5 @@
-/*@webcogs_system_prompt
+/*@webcogs_build 0.3.1 openai-o3 2025-07-30T11:14:46.298Z
+@webcogs_system_prompt
 # Docs for writing a plugin
 
 A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
@@ -63,7 +64,7 @@ Users should be shown like this: first_name surname (@username).
 
 Ticket should be shown like this: Ticket #ticket_id.
 
-This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+This is a multilingual application. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
 
 
 ## CSS definitions
@@ -191,7 +192,8 @@ div.login-screen-title {
   line-height: 40px;
   background-repeat: no-repeat;
   background-position: 0% 50%;
-  padding-left: 90px;
+  padding-left: 80px;
+  margin-bottom: 10px;
 }
 
 
@@ -242,73 +244,90 @@ CREATE TABLE Response (
 @webcogs_user_prompt
 Write a plugin that shows a login screen as a modal dialog. It has two fields: username and password, and a button 'login'. When login is pressed, route to 'logged_in' with username and password as parameters. The constructor takes two parameters: 'error' and 'language'. If error is defined, the error should be shown under the login button. Below the login button is a language selector, where you can select a language: English (en_us), Dutch (nl_nl), and Italian (it_it).  If language parameter is defined, default to that, otherwise to en_us. When a language is selected, route to set_language with as parameter the language code. Below that is a signup button, which routes to signup.
 @webcogs_end_prompt_section*/
-export class LoginScreen {
+export class LoginPlugin {
   constructor(core, error, language) {
     this.core = core;
     this.error = error;
     this.language = language || 'en_us';
 
-    // Build HTML
+    this.render();
+  }
+
+  render() {
+    // Build HTML with translations
+    const t = (str) => this.core.translate(str);
+
+    const langOptions = [
+      { code: 'en_us', label: t('English (en_us)') },
+      { code: 'nl_nl', label: t('Dutch (nl_nl)') },
+      { code: 'it_it', label: t('Italian (it_it)') },
+    ];
+
+    const optionsHtml = langOptions
+      .map((opt) =>
+        `<option value="${opt.code}" ${opt.code === this.language ? 'selected' : ''}>${opt.label}</option>`
+      )
+      .join('');
+
+    const errorHtml = this.error
+      ? `<div id="login-error" class="error-message">${t(this.error)}</div>`
+      : '';
+
     const html = `
-      <div>
-        <div class="login-screen-title">${core.translate('Login')}</div>
+      <div class="login-container">
+        <div class="login-screen-title">${t('Login')}</div>
         <div>
-          <label for="username">${core.translate('Username')}</label><br>
-          <input type="text" id="username"><br><br>
-
-          <label for="password">${core.translate('Password')}</label><br>
-          <input type="password" id="password"><br><br>
-
-          <button type="button" id="login-btn">${core.translate('Login')}</button>
-          ${error !== undefined && error !== null && error !== '' ? `<div id="error-msg" class="error">${core.translate(error)}</div>` : ''}
+          <label for="username">${t('Username')}</label><br/>
+          <input type="text" id="username" /><br/>
         </div>
-        <br>
-        <label for="language-select">${core.translate('Language')}</label><br>
-        <select id="language-select">
-          <option value="en_us">${core.translate('English')}</option>
-          <option value="nl_nl">${core.translate('Dutch')}</option>
-          <option value="it_it">${core.translate('Italian')}</option>
-        </select>
-        <br><br>
-        <button type="button" class="route-to-signup" id="signup-btn">${core.translate('Sign up')}</button>
+        <div>
+          <label for="password">${t('Password')}</label><br/>
+          <input type="password" id="password" /><br/>
+        </div>
+        <button id="login-button">${t('Login')}</button>
+        ${errorHtml}
+        <div style="margin-top:10px;">
+          <label for="language-select">${t('Select language')}:</label><br/>
+          <select id="language-select">${optionsHtml}</select>
+        </div>
+        <div style="margin-top:10px;">
+          <button id="signup-button" class="route-to-signup">${t('Signup')}</button>
+        </div>
       </div>
     `;
 
     const css = `
-      .error {
+      .login-container {
+        color: var(--text-color);
+        background-color: var(--main-bg-color);
+        padding: 20px;
+        border-radius: 8px;
+      }
+      .error-message {
         color: red;
         margin-top: 6px;
       }
     `;
 
-    const root = core.mount('modal_dialog', html, css);
+    // Mount widget
+    this.root = this.core.mount('modal_dialog', html, css);
 
-    // Set default language
-    const languageSelect = root.getElementById('language-select');
-    if (languageSelect) {
-      languageSelect.value = this.language;
-      languageSelect.addEventListener('change', (e) => {
-        const lang = e.target.value;
-        core.route('set_language', lang);
-      });
-    }
+    // Attach event listeners inside shadow DOM
+    const qs = (selector) => this.root.querySelector(selector);
 
-    // Login button handler
-    const loginBtn = root.getElementById('login-btn');
-    if (loginBtn) {
-      loginBtn.addEventListener('click', () => {
-        const username = root.getElementById('username').value.trim();
-        const password = root.getElementById('password').value;
-        core.route('logged_in', username, password);
-      });
-    }
+    qs('#login-button').addEventListener('click', () => {
+      const username = qs('#username').value.trim();
+      const password = qs('#password').value;
+      this.core.route('logged_in', username, password);
+    });
 
-    // Signup button handler
-    const signupBtn = root.getElementById('signup-btn');
-    if (signupBtn) {
-      signupBtn.addEventListener('click', () => {
-        core.route('signup');
-      });
-    }
+    qs('#language-select').addEventListener('change', (e) => {
+      const newLang = e.target.value;
+      this.core.route('set_language', newLang);
+    });
+
+    qs('#signup-button').addEventListener('click', () => {
+      this.core.route('signup');
+    });
   }
 }

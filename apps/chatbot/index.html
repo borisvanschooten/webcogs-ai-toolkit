@@ -697,7 +697,7 @@ async function submitMessage() {
 		content: message,
 	})
 
-    const response = await callLLM(client,messages,tools,"aifn_",generated_functions)
+    const response = await callLLM(client,messages,tools,"aifn_",generated_functions,"gpt-5")
 	const responseDiv = document.createElement('div')
 	responseDiv.className = "answer"
 
