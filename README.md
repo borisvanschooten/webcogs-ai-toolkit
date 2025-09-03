@@ -6,7 +6,7 @@ Minimalist AI toolkit for the browser, node.js, and web development. Currently b
 
 ## The chatbot
 
-This is a simple chatbot, but it enables direct access to [function/tool calling functionality](https://platform.openai.com/docs/guides/function-calling?api-mode=responses).  Standard tools are available for creating apps and new tools, and run code.  So, the AI can create its own tools, and can directly create browser apps that are run in iframes. 
+This is a simple chatbot, but it enables direct access to [function/tool calling functionality](https://platform.openai.com/docs/guides/function-calling?api-mode=responses).  Standard tools are available for creating apps and new tools, and run code.  So, the AI can create its own tools, and can directly create browser apps that run in iframes. 
 
 Just start apps/chatbot/index.html in the browser. You do not need a web server.  It will ask for an OpenAI API key, which is stored in the browser's localStorage.  Note that your key is only safe if:
 
@@ -28,7 +28,7 @@ To regenerate the browser bundle, first install node.js and npm.  Then install b
 
 ## Webcogs app building toolkit: using the LLM as a compiler
 
-I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and unreliable) compiler* that compiles specifications into code.  However, this only works for small coding tasks (e.g. single functions and classes), and if the prompt is small and clear enough, and written in sufficiently technical language.  The current generation of AI coding tools and agents are really not good enough to build or maintain larger software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
+I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and not fully reliable) compiler* that compiles specifications into code.  However, this only works for small coding tasks (e.g. single functions and classes), and if the prompt is small and clear enough, and written in sufficiently technical language.  The current generation of AI coding tools and agents are really not good enough to build or maintain larger software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
 
 The Webcogs toolkit is basically an AI-oriented software engineering experiment.  First of all, it is based on the *prompts-as-code* principle.  Normally, developers write a prompt to generate code, then they keep the code, but throw away the prompt.  The prompts-as-code concept turns this around: prompts are specifications, so they should not only be kept, but also managed using software engineering principles, such as modularity and version control.  The more prompts are treated as first-class citizens, the more easily code can be re-generated reliably.
 
@@ -36,9 +36,10 @@ The envisioned development process looks something like this: software is manual
 
 The Webcogs app building toolkit provides experimental solutions in two key areas:
 
-- Language and framework agnostic build tools, which support modular prompt structuring. This allows building a prompt out of select parts of the core specifications, such as API docs and SQL and CSS definitions, along with module-specific prompt text.  It also includes a diff tool which shows differences between the current prompt and the prompt with which particular code was generated.  It makes it easier to update AI generated code when specifications are updated, and fix issues with the AI generated code with prompt engineering rather than direct changes in the code.  Currently two command line tools are provided, with a VS code extension on the way:
-  - **buildcog** - Build and diff single-file modules.  Reads prompts from a prompt manifest that contains specifications for a set of modules, enabling handling of multiple modules with a single command. 
+- Language and framework agnostic build tools, which support modular prompt structuring. This allows building a prompt out of select parts of the core specifications, such as API docs and SQL and CSS definitions, along with module-specific prompt text.  It also includes a diff tool which shows differences between the current prompt and the prompt with which particular code was generated.  It makes it easier to update AI generated code when specifications are updated, and fix issues with the AI generated code with prompt engineering rather than direct changes in the code.  Currently two command line tools are provided, which can also be used via a VS code extension:
+  - **buildcog** - Build and diff single-file modules.  Reads prompts from a prompt buildfile that contains specifications for a set of modules, enabling handling of multiple modules with a single command. 
   - **updatecogsinplace** - Modify files containing @cogs directives, which allow specific comments to be interpreted as prompts, and insert generated code at particular places while leaving the rest of the file as-is.
+
 - a framework that provides specific ways to structure your software in an AI friendly way, in particular a core/plugin structure for web apps, and a translation tool. The core app is a HTML single page application, where the plugins handle specific pages and widgets.
 
 
@@ -51,9 +52,9 @@ export OPENAI_API_KEY=sk-proj-xxxxxxxxxxxx
 ```
 
 
-### Using buildcog + a prompt manifest to generate code in separate files
+### Using buildcog + a prompt buildfile to generate code in separate files
 
-Webcogs provides the **buildcog** tool, which takes a json file called a *prompt manifest*, which is like a Makefile.  It uses this file to build a prompt, then calls a LLM, and outputs the AI generated code to a target file. The prompt manifest defines the LLM model, prompts, and build targets.  It enables you to structure your prompts in a modular framework-agnostic way.  
+Webcogs provides the **buildcog** tool, which takes a json file called a *prompt buildfile* aka *prompt manifest*, which is like a Makefile, defining a set of build targets.  With help of this file, the tool builds a prompt, calls a LLM, and outputs the AI generated code to a specified target file.  It enables you to structure your prompts in a modular framework-agnostic way.  
 
 You can run the tool with a node command:
 ```
@@ -67,15 +68,16 @@ npm install -g .
 
 This will install the build script under the shell command **buildcog**. 
 
-Prompt manifest format is as follows:
+Prompt buildfile format is as follows:
 
 ```json
 {
+	"webcogs_buildfile_version": 1,
 	"name": "Ticketing App",
 	"description": "Simple demo app for demonstrating WebCogs plugins",
 	"version": "0.1",
 	"ai_vendor": "openai",
-	"ai_model": "o3",
+	"ai_model": "gpt-5",
 	"system_prompts": [
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
@@ -201,9 +203,9 @@ The current version will not overwrite the original file, but create a new file 
 updatecogsinplace getUsers apps/test-inplace/backend/index.js
 ```
 
-#### updatecogsinplace VSCode extension
+### VSCode extension
 
-There is now a VSCode extension, which is a separate node package in the folder *vscode-extension/webcogs/*.  This extension adds a codelens for each @cogs_func directive, allowing you to generate each function from the editor with a single click.
+There is now a VSCode extension, which is a separate node package in the folder *vscode-extension/webcogs/*.  This extension adds a codelens for each @cogs_func directive, and each target in a prompt buildfile, allowing you to generate each function and file from the editor with a single click.
 
 You can install it from the VSCode marketplace, or via a WSIX file.  For more instructions, see *vscode-extension/webcogs/README.md*.
 

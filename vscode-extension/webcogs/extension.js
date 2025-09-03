@@ -4,9 +4,10 @@ const path = require('path');
 const vscode = require('vscode');
 const OpenAI = require("openai");
 
-const {UpdateCogsInPlace} = require('webcogs')
+const {UpdateCogsInPlace,BuildCog} = require('webcogs')
 //const CodelensProvider  = require('./CodelensProvider');
-
+console.log(BuildCog)
+console.log(UpdateCogsInPlace)
 
 const funcregex = /cogs_func\s+([a-zA-Z0-9_]+)/g;
 
@@ -38,11 +39,50 @@ class CodelensProvider {
 		try {
 			if (!vscode.workspace.getConfiguration("webcogs").get("enableCodeLens", true)) return;
 			var codeLenses = [];
-			// scan for multiline comments that contain @cogs_func <funcname>. Create a codelens right below the comment.
 			var lines = []
 			for (let line = 0; line < document.lineCount; line++) {
 				lines.push(document.lineAt(line).text)
 			}
+			//Detect if this is a promptbuildfile:
+			// JSON file with the field: "webcogs_buildfile_version": <versionNr_integer>,
+			var text = document.getText()
+			if (text.match(/"webcogs_buildfile_version"\s*:\s*[0-9]+/)) {
+				console.log("Detected buildfile")
+				// detected prompt buildfile, parse JSON
+				try {
+					var json = JSON.parse(text)
+					if (json && json.targets && Array.isArray(json.targets)) {
+						for (var i=0; i<json.targets.length; i++) {
+							var target = json.targets[i]
+							if (target.name) {
+								console.log(`Searching for target ${target.name}`)
+								// XXX shallow parsing, may detect project name as a target
+								var targetregex = new RegExp(`"name"\\s*:\\s*"${target.name}"`)
+								for (var l=0; l<lines.length; l++) {
+									if (lines[l].match(targetregex)) {
+										console.log("Found target")
+										const range = new vscode.Range(l, 0, l, lines[l].length);
+										codeLenses.push(
+											new vscode.CodeLens(range, {
+												title: `Rebuild "${target.name}"`,
+												tooltip: 'Click to run this function',
+												command: 'webcogs.codelensBuildAction',
+												arguments: [target.name, "build"]   // passed to the command
+											})
+										)
+									}
+								}
+							}
+						}
+					}
+					return codeLenses;
+				} catch (error) {
+					console.log("Error parsing webcogs buildfile: "+error)
+					// return any codelenses we already found, otherwise fallback to normal parsing
+					if (codeLenses) return codeLenses
+				}
+			}
+			// scan for multiline comments that contain @cogs_func <funcname>. Create a codelens right below the comment.
 			var funcName = null // null means no func found 
 			var tokens = UpdateCogsInPlace.commentTokenizer(lines, (linenr,charnr,token,insideMultilineComment) => {
 				if (insideMultilineComment) {
@@ -232,13 +272,26 @@ function activate(context) {
 		getSecretsFromUser(context)
 	});
 
+	vscode.commands.registerCommand("webcogs.codelensBuildAction", (targetName,opName) => {
+		vscode.window.showInformationMessage(`Building ${targetName}...`);
+		console.log("buildAction triggered: "+targetName + " " + opName)
+		const editor = vscode.window.activeTextEditor
+		const document = editor.document
+		const fileName = document.fileName
+		var basePath = path.dirname(fileName)
+		var buildcog = new BuildCog(openaiclient, opName, [targetName], fileName)
+		buildcog.runCommand().then( (err) => {
+			vscode.window.showInformationMessage(`Finished building ${targetName}.`);			
+		})
+	})
+
 	vscode.commands.registerCommand("webcogs.codelensAction", (funcName) => {
 		vscode.window.showInformationMessage(`Building ${funcName}...`);
 		const editor = vscode.window.activeTextEditor
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, funcName, "openai", "o3")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, funcName, "openai", "gpt-5")
 		parser.parseFile().then( (update) => {
 			//console.log(update.diffs)
 			for (var i=0; i<update.diffs.length; i++) {

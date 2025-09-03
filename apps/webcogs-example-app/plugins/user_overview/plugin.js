@@ -1,4 +1,5 @@
-/*@webcogs_system_prompt
+/*@webcogs_build 0.3.3 openai-gpt-5 2025-09-02T11:21:22.104Z
+@webcogs_system_prompt
 # Docs for writing a plugin
 
 A plugin is a module that can interact with the user via HTML widgets, or process information.  A plugin is always defined as a single export class, and should be written in vanilla Javascript. Always define the class as an "export class". Do not assume any libraries are available.  For example, do not use jquery.  The class constructor always has this signature: 
@@ -21,7 +22,7 @@ core.route has the following parameters:
 - route - a string describing the route. The format of the route is defined in the section "core.route routes". Use only these.
 - custom_params - there can be any number of custom parameters.
 
-function core.translate(string) - Translate a string into the user's language.
+function core.translate(string) - Translate a literal string into the user's language.
 
 ## Core properties
 
@@ -53,13 +54,17 @@ Use the classes, styles, and properties in the supplied CSS definitions as much 
 
 Widgets should always display a title.
 
+Form fields, labels, and buttons should be left-aligned.
+
+Email form fields should be implemented using input type="email".
+
 If showing an organization, always show the organisation name and not the organization ID.
 
-Users should be shown like this: first_name surname (@username)
+Users should be shown like this: first_name surname (@username).
 
-Ticket should be shown like this: Ticket #ticket_id
+Ticket should be shown like this: Ticket #ticket_id.
 
-This is a multilingual applicatiom. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
+This is a multilingual application. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
 
 
 ## CSS definitions
@@ -70,7 +75,7 @@ This is a multilingual applicatiom. Run all literal strings / texts in the code 
   --button-bg-color: #bbf;
   --button-text-color: #006;
   --highlight-ticket-bg-color: #fcc;
-  --mainmenu-item-selected-bg-color: #66f;
+  --mainmenu-item-selected-bg-color: #88f;
 }
 
 \/* Use UL/LI with the following classes for mainmenu *\/
@@ -78,8 +83,12 @@ ul.mainmenu {
   list-style: none;
   display: flex;
   gap: 15px;
-  background-color: #222;
   margin: 8px;
+  padding: 0px;
+  padding-left: 90px;
+  background-image: url('images/logo40-title.png');
+  background-repeat: no-repeat;
+  background-position: 0% 50%;
 }
 li.mainmenu-item {
   cursor: pointer;
@@ -92,6 +101,8 @@ li.mainmenu-item {
     ul.mainmenu {
         display: block;
         height: auto;
+        background: none;
+        padding-left: 0px;
     }
 }
 
@@ -132,16 +143,59 @@ div.organization-avatar.id-6 {
   background-color: #f4f;
 }
 
-input[type="text"], input[type="email"] {
+input[type="text"], input[type="email"], input[type="password"] {
   width: 100%;
+  min-width: 300px;
 }
+
 select {
   background-color: var(--button-bg-color);
   font-size: 18px;
+  border: 2px solid #88c;
+  padding: 4px;
+  margin: 4px;
+  border-radius: 4px;
 }
-pre {
+
+button {
+  background-color: var(--button-bg-color);
+  color: var(--button-text-color);
+  padding: 4px 12px;
+  font-size: 18px;
+  cursor: pointer;
+  border: 2px solid #88c;
+  border-radius: 4px;
+  box-shadow: 4px 4px 4px rgba(0,0,0,0.1);
+}
+button.route-to-signup {
+  border: none;
+  background-color: transparent;
+  font-weight: bold;
+  text-decoration: underline;
+  box-shadow: none;
+}
+
+\/* use pre.ticket-text to show the content of ticket and response text *\/
+pre, pre.ticket-text {
   white-space: pre-wrap;
+  font-family: Arial, sans-serif;
+  background: #eee;
+  padding: 10px;
+  border: 1px solid #aaa;
 }
+
+div.login-screen-title {
+  font-size: 22px;
+  font-weight: bold;
+  background-image: url('images/logo40.png');
+  height: 40px;
+  line-height: 40px;
+  background-repeat: no-repeat;
+  background-position: 0% 50%;
+  padding-left: 80px;
+  margin-bottom: 10px;
+}
+
 
 ## SQL table definitions
 
@@ -180,6 +234,7 @@ CREATE TABLE Ticket (
 CREATE TABLE Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
+	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
     time DATETIME NOT NULL,
     assigned_to TEXT,
     status TEXT,
@@ -187,136 +242,239 @@ CREATE TABLE Response (
 )
 
 @webcogs_user_prompt
-Write a plugin that shows a single user in a table with two columns, keys left and values right. The user ID is passed as a custom parameter to the constructor.  Below the user table should be the list of tickets submitted by the user. When you click on a ticket, route to ticket_overview with the ticket ID as custom parameter. Below that is a list of tickets assigned to the user's organization.  Open tickets should be highlighted in both lists.
+Write a plugin that shows a single user in a table with two columns, keys left and values right. The user ID is passed as a custom parameter to the constructor.  Below the user table should be the list of tickets submitted by the user. Each ticket should list the description and submitted date. When you click on a ticket, route to ticket_overview with the ticket ID as custom parameter. Below that is a list of tickets assigned to the user's organization.  Open tickets should be highlighted in both lists.
 
 
 @webcogs_end_prompt_section*/
-export class UserProfileTicketsPlugin {
-    constructor(core, userId) {
-        this.core = core;
-        this.userId = userId;
-        // fire and forget – no need to await here because we cannot make
-        // constructor async.  Call an async init method.
-        this.init();
+export class UserDetailsPlugin {
+  constructor(core, userId) {
+    this.core = core;
+    this.userId = userId;
+    this.shadow = this.core.mount(
+      'main',
+      `
+        <div class="user-overview">
+          <h2 id="title"></h2>
+          <table id="user-table" class="user-table">
+            <tbody id="user-tbody"></tbody>
+          </table>
+
+          <h3 id="submitted-title"></h3>
+          <ul id="submitted-list" class="ticket-list"></ul>
+
+          <h3 id="assigned-title"></h3>
+          <ul id="assigned-list" class="ticket-list"></ul>
+        </div>
+      `,
+      `
+        .user-overview { color: var(--text-color); background: var(--main-bg-color); }
+        .user-overview h2 { margin-top: 0; }
+        table.user-table { border-collapse: collapse; margin-top: 8px; }
+        table.user-table td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
+        table.user-table td.key { font-weight: bold; width: 220px; }
+        ul.ticket-list { list-style: none; padding: 0; margin: 4px 0 16px 0; }
+        ul.ticket-list li { border: 1px solid #ccc; padding: 8px; margin: 6px 0; cursor: pointer; border-radius: 4px; }
+        ul.ticket-list li:hover { box-shadow: 0 0 4px rgba(0,0,0,0.15); }
+        .ticket-title { font-weight: bold; }
+        .ticket-date { font-size: 12px; color: #555; }
+        .ticket-text { margin-top: 6px; white-space: pre-wrap; }
+        .organization-field { display: flex; align-items: center; gap: 8px; }
+      `
+    );
+
+    this.init();
+  }
+
+  async init() {
+    const t = (s) => this.core.translate(s);
+
+    // Element references
+    this.titleEl = this.shadow.getElementById('title');
+    this.userTbody = this.shadow.getElementById('user-tbody');
+    this.submittedTitle = this.shadow.getElementById('submitted-title');
+    this.submittedList = this.shadow.getElementById('submitted-list');
+    this.assignedTitle = this.shadow.getElementById('assigned-title');
+    this.assignedList = this.shadow.getElementById('assigned-list');
+
+    // Set initial titles
+    this.titleEl.textContent = t('User');
+    this.submittedTitle.textContent = t('Tickets submitted by this user');
+    this.assignedTitle.textContent = t('Tickets assigned to this user\'s organization');
+
+    if (!this.userId && this.userId !== 0) {
+      this.userTbody.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.appendChild(this._td(t('Error')));
+      tr.appendChild(this._td(t('No user ID provided')));
+      this.userTbody.appendChild(tr);
+      return;
     }
 
-    async init() {
-        const t = (str) => this.core.translate(str);
-
-        // 1. Fetch user info
-        const userRows = await this.core.db.run("SELECT * FROM User WHERE id=?", [this.userId]);
-        if (!userRows || !userRows.length) {
-            // user not found, mount an error message and bail out
-            const errorHtml = `<h2>${t("User not found")}</h2>`;
-            this.core.mount("main", errorHtml, "");
-            return;
-        }
-        const user = userRows[0];
-
-        // 2. Fetch organisation
-        let orgName = t("Unknown organisation");
-        if (user.organization_id !== null) {
-            const orgRows = await this.core.db.run("SELECT name FROM Organization WHERE id=?", [user.organization_id]);
-            if (orgRows && orgRows.length) {
-                orgName = orgRows[0].name;
-            }
-        }
-
-        // 3. Fetch user submitted tickets
-        const submittedTickets = await this.core.db.run(
-            "SELECT id, status FROM Ticket WHERE submitted_by=? ORDER BY id DESC",
-            [this.userId]
-        );
-
-        // 4. Fetch organisation tickets (assigned to org)
-        let orgTickets = [];
-        if (user.organization_id !== null) {
-            orgTickets = await this.core.db.run(
-                "SELECT id, status FROM Ticket WHERE assigned_to=? ORDER BY id DESC",
-                [user.organization_id]
-            );
-        }
-
-        // 5. Compose HTML
-        const userDisplay = `${user.first_name} ${user.surname} (@${user.username})`;
-
-        const userTableRows = [
-            { k: t("User"), v: userDisplay },
-            { k: t("Email"), v: user.email },
-            { k: t("Organisation"), v: orgName },
-            { k: t("Role"), v: user.role }
-        ].map(row => `<tr><td><strong>${row.k}</strong></td><td>${row.v}</td></tr>`).join("\n");
-
-        // Helper to render ticket list items
-        const renderTicketItem = (ticket) => {
-            const openClass = ticket.status === "open" ? "open" : "";
-            return `<li class="ticket-list-item ${openClass}" data-id="${ticket.id}">${t("Ticket")} #${ticket.id}</li>`;
-        };
-
-        const submittedTicketsHtml = submittedTickets.length
-            ? submittedTickets.map(renderTicketItem).join("\n")
-            : `<li>${t("No tickets")}</li>`;
-
-        const orgTicketsHtml = orgTickets.length
-            ? orgTickets.map(renderTicketItem).join("\n")
-            : `<li>${t("No tickets")}</li>`;
-
-        const html = `
-            <div class="user-profile-widget">
-                <h2>${t("User details")}</h2>
-
-                <table class="user-table">
-                    <tbody>
-                        ${userTableRows}
-                    </tbody>
-                </table>
-
-                <h3>${t("Tickets submitted by user")}</h3>
-                <ul class="ticket-list submitted-tickets">
-                    ${submittedTicketsHtml}
-                </ul>
-
-                <h3>${t("Tickets assigned to organisation")}</h3>
-                <ul class="ticket-list org-tickets">
-                    ${orgTicketsHtml}
-                </ul>
-            </div>
-        `;
-
-        const css = `
-            h2, h3 { color: var(--text-color); }
-            table.user-table {
-                border-collapse: collapse;
-                width: 100%;
-            }
-            table.user-table td {
-                padding: 4px 8px;
-                border-bottom: 1px solid #ccc;
-            }
-            ul.ticket-list {
-                list-style: none;
-                padding-left: 0;
-            }
-            li.ticket-list-item {
-                cursor: pointer;
-                padding: 6px 4px;
-                border-bottom: 1px solid #ddd;
-            }
-            li.ticket-list-item.open {
-                background-color: var(--highlight-ticket-bg-color);
-            }
-        `;
-
-        const shadowRoot = this.core.mount("main", html, css);
-
-        // 6. Add event listener for routing on click
-        shadowRoot.querySelectorAll('.ticket-list-item').forEach(li => {
-            li.addEventListener('click', (ev) => {
-                const ticketId = parseInt(ev.currentTarget.getAttribute('data-id'), 10);
-                if (!isNaN(ticketId)) {
-                    this.core.route('ticket_overview', ticketId);
-                }
-            });
-        });
+    // Load user, organization, and tickets
+    const user = await this._getUser(this.userId);
+    if (!user) {
+      this.userTbody.innerHTML = '';
+      const tr = document.createElement('tr');
+      tr.appendChild(this._td(t('Error')));
+      tr.appendChild(this._td(t('User not found')));
+      this.userTbody.appendChild(tr);
+      return;
     }
+
+    const org = await this._getOrganization(user.organization_id);
+
+    // Render user title and table
+    this.titleEl.textContent = `${t('User')}: ${this._formatUser(user)}`;
+    this._renderUserTable(user, org);
+
+    // Tickets submitted by user
+    const submittedTickets = await this._getTicketsSubmittedByUser(user.id);
+    this._renderTicketList(
+      this.submittedList,
+      submittedTickets,
+      (ticket) => this.core.route('ticket_overview', ticket.id)
+    );
+
+    // Tickets assigned to user's organization
+    if (org) {
+      this.assignedTitle.textContent = `${t("Tickets assigned to organization")} ${org.name}`;
+      const assignedTickets = await this._getTicketsAssignedToOrg(org.id);
+      this._renderTicketList(
+        this.assignedList,
+        assignedTickets,
+        (ticket) => this.core.route('ticket_overview', ticket.id)
+      );
+    } else {
+      this.assignedTitle.textContent = t("Tickets assigned to organization");
+      this.assignedList.innerHTML = '';
+      const li = document.createElement('li');
+      li.textContent = t('No organization found');
+      this.assignedList.appendChild(li);
+    }
+  }
+
+  _td(textOrNode, isKey = false) {
+    const td = document.createElement('td');
+    if (typeof textOrNode === 'string') {
+      td.textContent = textOrNode;
+    } else if (textOrNode instanceof Node) {
+      td.appendChild(textOrNode);
+    }
+    if (isKey) td.classList.add('key');
+    return td;
+  }
+
+  _renderUserTable(user, org) {
+    const t = (s) => this.core.translate(s);
+    this.userTbody.innerHTML = '';
+
+    const addRow = (key, valueNodeOrStr) => {
+      const tr = document.createElement('tr');
+      tr.appendChild(this._td(t(key), true));
+      tr.appendChild(this._td(valueNodeOrStr));
+      this.userTbody.appendChild(tr);
+    };
+
+    // ID
+    addRow('ID', String(user.id));
+
+    // Username
+    addRow('Username', user.username);
+
+    // Full name
+    addRow('Full name', `${user.first_name} ${user.surname}`);
+
+    // Email
+    addRow('Email', user.email);
+
+    // Organization (name, not ID) with avatar
+    const orgContainer = document.createElement('div');
+    orgContainer.className = 'organization-field';
+    const avatar = document.createElement('div');
+    avatar.className = 'organization-avatar ' + (org && org.id ? ('id-' + this._orgAvatarClass(org.id)) : 'id-none');
+    const orgName = document.createElement('span');
+    orgName.textContent = org ? org.name : t('None');
+    orgContainer.appendChild(avatar);
+    orgContainer.appendChild(orgName);
+    addRow('Organization', orgContainer);
+
+    // Role
+    addRow('Role', user.role);
+  }
+
+  _formatUser(u) {
+    return `${u.first_name} ${u.surname} (@${u.username})`;
+  }
+
+  _orgAvatarClass(orgId) {
+    // Map any orgId to one of id-1..id-6
+    let n = orgId % 6;
+    if (n === 0) n = 6;
+    return String(n);
+  }
+
+  _renderTicketList(containerEl, tickets, onClick) {
+    const t = (s) => this.core.translate(s);
+    containerEl.innerHTML = '';
+
+    if (!tickets || tickets.length === 0) {
+      const li = document.createElement('li');
+      li.textContent = t('No tickets found');
+      containerEl.appendChild(li);
+      return;
+    }
+
+    tickets.forEach((ticket) => {
+      const li = document.createElement('li');
+      if ((ticket.status || '').toLowerCase() === 'open') {
+        li.style.backgroundColor = 'var(--highlight-ticket-bg-color)';
+      }
+      const title = document.createElement('div');
+      title.className = 'ticket-title';
+      title.textContent = `${t('Ticket')} #${ticket.id}`;
+
+      const date = document.createElement('div');
+      date.className = 'ticket-date';
+      const dt = new Date(ticket.time);
+      date.textContent = `${t('Submitted')}: ${isNaN(dt.getTime()) ? ticket.time : dt.toLocaleString()}`;
+
+      const text = document.createElement('div');
+      text.className = 'ticket-text';
+      text.textContent = ticket.text || '';
+
+      li.appendChild(title);
+      li.appendChild(date);
+      li.appendChild(text);
+
+      li.addEventListener('click', () => onClick(ticket));
+
+      containerEl.appendChild(li);
+    });
+  }
+
+  async _getUser(id) {
+    const rows = await this.core.db.run('SELECT * FROM User WHERE id=?', [id]);
+    return rows && rows.length ? rows[0] : null;
+  }
+
+  async _getOrganization(id) {
+    const rows = await this.core.db.run('SELECT * FROM Organization WHERE id=?', [id]);
+    return rows && rows.length ? rows[0] : null;
+  }
+
+  async _getTicketsSubmittedByUser(userId) {
+    const rows = await this.core.db.run(
+      'SELECT id, text, time, status FROM Ticket WHERE submitted_by=? ORDER BY time DESC',
+      [userId]
+    );
+    return rows || [];
+  }
+
+  async _getTicketsAssignedToOrg(orgId) {
+    const rows = await this.core.db.run(
+      'SELECT id, text, time, status FROM Ticket WHERE assigned_to=? ORDER BY time DESC',
+      [orgId]
+    );
+    return rows || [];
+  }
 }

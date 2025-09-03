@@ -13,3 +13,7 @@ Documentation improvements
 - error emission is triggered faster
 - updated version reporting in generated code
 - build finished information message
+
+## 0.4.0
+
+- added support for buildcog / promptbuildfiles

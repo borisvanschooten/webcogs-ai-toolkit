@@ -2,12 +2,12 @@
   "name": "webcogs-ai-toolkit",
   "publisher": "borisvanschooten",
   "displayName": "WebCogs AI Toolkit",
-  "description": "Experimental AI prompts-as-code toolkit",
+  "description": "Experimental AI LLM-as-compiler toolkit",
   "categories": ["AI", "Programming Languages"],
   "keywords": ["prompts as code", "context engineering", "code generation", "LLM" ],
   "icon": "head-with-cog-crop-right-128x128.png",
   "repository": "https://github.com/borisvanschooten/webcogs-ai-toolkit",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "license": "MIT",
   "engines": {
     "vscode": "^1.102.0"
@@ -45,7 +45,7 @@
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test",
-    "install-local-webcogs": "cd ../.. && npm run pack && cd vscode-extension/webcogs/ && npm install ../../webcogs-0.3.2.tgz --no-save"
+    "install-local-webcogs": "cd ../.. && npm run pack && cd vscode-extension/webcogs/ && npm install ../../webcogs-0.4.0.tgz --no-save"
   },
   "devDependencies": {
     "@types/vscode": "^1.102.0",
