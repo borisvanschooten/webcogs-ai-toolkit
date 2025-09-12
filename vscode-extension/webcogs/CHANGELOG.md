@@ -17,3 +17,7 @@ Documentation improvements
 ## 0.4.0
 
 - added support for buildcog / promptbuildfiles
+
+## 0.4.1
+
+- cleanup

@@ -133,7 +133,7 @@ Go to the repo's vscode-extension/webcogs subdirectory, then:
 
 ```
 npm run install-local-webcogs
-vsce package
+vsce package (or npm run package)
 ```
 
 This will create a vsix package, which you can install in VSCode:

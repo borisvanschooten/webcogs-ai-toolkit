@@ -1,9 +1,11 @@
 {
   "name": "webcogs",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "bin": {
     "buildcog": "./clitools/build_ai_module.js",
-    "updatecogsinplace": "./clitools/update_functions_inplace.js"
+    "updatecogsinplace": "./clitools/update_functions_inplace.js",
+    "cogstranslate": "./clitools/translate.js",
+    "callllm": "./clitools/callllm.js"
   },
   "exports": {
     ".": "./js/index.js"
@@ -11,6 +13,7 @@
   "dependencies": {
     "browserify": "^17.0.1",
     "colors": "^1.4.0",
+    "command-line-args": "^6.0.1",
     "cookie-parser": "^1.4.7",
     "diff": "^8.0.2",
     "express": "^5.1.0",
@@ -20,7 +23,8 @@
     "sql.js": "^1.13.0"
   },
   "scripts": {
-    "pack": "npm pack"
+    "pack": "npm pack",
+    "localinstall": "npm install -g ."
   },
   "devDependencies": {
     "xgettext-js": "^3.0.0"
