@@ -1,0 +1,10 @@
+INSERT INTO Organization VALUES (1,'Organization 1','vendor');
+INSERT INTO Organization VALUES (2,'Organization 2','vendor');
+INSERT INTO Organization VALUES (3,'Organization 3','vendor');
+INSERT INTO user VALUES (1,'johnny','johnsmith@gmail.com','John','Smith',1,'user');
+INSERT INTO user VALUES (2,'alan','alansmithee@gmail.com','Alan','Smithee',2,'developer');
+INSERT INTO user VALUES (3,'wendy','wendy-potters@gmail.com','Wendy','Potters',3,'user');
+INSERT INTO Ticket VALUES (1,1,2,'Hi, I have a problem with my phone.  Internet has stopped working.','2025-07-01 11:10:00','open');
+INSERT INTO Ticket VALUES (2,1,2,'The problem with my phone persists, please help.','2025-07-07 15:30:11','open');
+INSERT INTO Ticket VALUES (3,2,NULL,'Hi there, my Outlook is flagging important mail as spam. What can I do about this?','2025-07-03 13:33:00','open');
+INSERT INTO Ticket VALUES (4,3,NULL,'My PC is sometimes very slow and gets very hot.','2025-07-03 14:12:56','open');

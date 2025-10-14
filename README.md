@@ -20,6 +20,20 @@ There is also a credentials manager for tools that require credentials to functi
 
 Tools can be imported and exported in JSON format.  Some ready to use tools are included in the aitools/ folder.  During chat, tools can be enabled and disabled via the checkmarks next to the tools.
 
+### Simple command line tool
+
+As an alternative to the chatbot, there is also a simple tool for AI processing on the command line. After installing the command line tools locally (e.g *npm install -g .*) you can invoke LLMs using:
+```
+callllm --prompt <prompt> --model <model>
+```
+
+Note the default model is gpt-5.  You can also use stdin to pipe prompts into the tool, which will be concatenated after the prompt given with the '--prompt' option. For example:
+
+```
+callllm --prompt 'Translate the following text into Dutch:' --model gpt-5-mini <english-text.txt
+```
+
+
 ### Recompile the OpenAI JS library for the browser
 
 The toolkit comes with a pre-compiled browser-compatible version of the OpenAI JS library (lib/openai-bundle.js). This is normally used for server-side AI, but is compiled for browser use using browserify. 
@@ -82,7 +96,7 @@ Prompt buildfile format is as follows:
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
 		{ "text": "\n## CSS definitions\n\n", "file": "basestyles.css"},
-		{ "text": "\n## SQL table definitions\n\n", "file": "datamodel.sql"}
+		{ "text": "\n## SQL table definitions\n\n", "file": "sql/datamodel.sql"}
 	],
 	"wd": "plugins/",
 	"targets": [
@@ -153,7 +167,7 @@ A file with webcogs directives looks like this:
 @cogs_system_prompt
 @cogs_include "backend.md"
 ## MySQL data structure
-@cogs_include "../../webcogs-example-app/datamodel.sql"
+@cogs_include "../../webcogs-example-app/sql/datamodel.sql"
 */
 
 /* Manually managed code */
@@ -237,7 +251,7 @@ A plugin always consists of a single class with a constructor that initialises t
 
 ### Multilinguality
 
-A translate tool based on gettext style translation is now available.  Basically you wrap all literal texts in your code in a function, and the function will translate it if there's a translation table available. The core functions for this are:
+A translate tool **cogstranslate**, based on gettext style translation, is also available.  Basically you wrap all literal texts in your code in a function, and the function will translate them via a translation table. The core functions for this are:
 
 - core.translate(text)
 - core.loadTranslations(language_code)
@@ -246,23 +260,46 @@ The example app has multilinguality.  The following global prompt is used to ins
 
 > This is a multilingual application. Run all literal strings / texts in the code and HTML through core.translate(). Do not write your own wrapper function, always call core.translate directly.
 
-This is enough to automatically wrap almost all literal strings.  The tool translate.js can now be used to extract the literal strings from the function calls using xgettext-js.  The strings are then fed into an AI to provide automatic translations and saved to a JSON file.  The following command line will get all strings from the example app plugins and put them in a JSON translation table:
+This prompt is enough to automatically wrap almost all literal strings.  The tool **cogstranslate** can then be used to extract the literal strings from Javascript using xgettext-js. For other programming languages, you can use the xgettext command line tool to create a PO file, then have cogstranslate read the strings from the PO file.  The extracted strings can then be fed into an AI to provide automatic translations and saved to a JSON file.  The following command will get all strings from the example app plugins and put them in a JSON translation table:
 
 ```
-node.exe clitools/translate.js Italian apps/webcogs-example-app/i18n/it_it.json apps/webcogs-example-app/plugins/*/plugin.js
+cogstranslate --automatic --language Italian --output apps/webcogs-example-app/i18n/it_it.json --sourcefiles apps/webcogs-example-app/plugins/*/plugin.js
 ```
 
-If I decide to keep this new multilinguality scheme, it seems logical to eventually include it in the buildcog tool.
+Cogstranslate has the following command line options:
 
-### Example WebCogs app
+- sourcefiles - a list of Javascript source files to extract strings from
 
-An example WebCogs application is found in apps/webcogs-example-app/.  The app has to be run from a webserver that also provides SQL and auth endpoints. A simple webserver with example data for the app is provided. Run it with:
-```
-node ./clitools/webserver.js
-``` 
-Now, you can run the app from http://localhost:3000/apps/webcogs-example-app/index.html.
+- pofile - a gettext PO file to read strings from (only source strings are read, any translations will be ignored)
 
-Log in with username: alan, pasword: admin.
+- output - file to output JSON to
+
+- automatic - invokes AI for automatic translation
+
+- language - plaintext string passed to the AI for automatic translation, e.g. "Dutch".
+
+- override - provide a json file with (manual) translations that override any automatic translations
+
+- prompt - additional prompt to add to the translation prompt
+
+Note that gettext support is simplified, and does not currently include context, plurality, and parameters.  For literals with parameters, you can use a sprintf-like function like this:  sprintf(cogs.translate("Hello, %s."), name).  Lack of plurality (e.g. the __n() function) and context (e.g. using "context1|string" and "context2|string" to separate between homonyms) can theoretically be a problem but I found they are rarely needed in practice.
+
+
+### Example WebCogs app with webserver
+
+An example WebCogs application is found in apps/webcogs-example-app/.  The app has to be run from a webserver that also provides SQL and auth endpoints. The webserver is based on Node's built-in Sqlite engine, and is somewhat generic in how it handles databases, so you can reuse it for your own projects.  It persists the data in two db files, with the credentials stored in a separate database for security. Default location is 'databases/webcogs-example-app.db' and 'databases/webcogs-example-app-credentials.db'. You can change the base name using the "--datafile [basename]" option. It will concatenate ".dn" and "-credentials.db" to obtain the database filenames.
+
+At the first run, you have to initialse the databases, like so:
+
+node clitools/webserver.js --sqlfiles apps/webcogs-example-app/sql/datamodel.sql \
+                                      apps/webcogs-example-app/sql/exampledata.sql 
+                            --credentialssql apps/webcogs-example-app/sql/example-passwords.sql 
+
+This initialises the data model and fills it with example data and example credentials. Once initialsed, you can run the tool without options to continue using the existing data.
+
+Once the webserver has started, you can run the app from http://localhost:3000/apps/webcogs-example-app/index.html.
+
+If you initialised with the example data, you can log in with username: alan, pasword: admin.
 
 ## Future work
 

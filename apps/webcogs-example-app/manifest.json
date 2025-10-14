@@ -9,7 +9,7 @@
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
 		{ "text": "\n## CSS definitions\n\n", "file": "basestyles.css"},
-		{ "text": "\n## SQL table definitions\n\n", "file": "datamodel.sql"}
+		{ "text": "\n## SQL table definitions\n\n", "file": "sql/datamodel.sql"}
 	],
 	"wd": "plugins/",
 	"targets": [

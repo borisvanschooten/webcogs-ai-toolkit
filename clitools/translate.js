@@ -136,7 +136,8 @@ var client = new OpenAI.OpenAI({apiKey: process.env.OPENAI_API_KEY})
 var gettext_parser = new XGettext({keywords: { "translate": 1 } });
 
 
-
+// TODO: add function parameter (so you can use a translate function other than core.translate)
+// TODO: fill in override before running through automatic translation so that the AI can use them as examples 
 const optionDefinitions = [
   { name: 'language', alias: 'l', type: String },
   { name: 'output', alias: 'o', type: String },

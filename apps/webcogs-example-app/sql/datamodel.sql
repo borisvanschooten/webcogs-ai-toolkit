@@ -1,13 +1,13 @@
 
 -- Organization role is one of: customer, vendor
-CREATE TABLE Organization (
+CREATE TABLE IF NOT EXISTS Organization (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     role TEXT NOT NULL
 );
 
 -- User role is one of: user, developer, admin
-CREATE TABLE User (
+CREATE TABLE IF NOT EXISTS User (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL UNIQUE,
@@ -19,7 +19,7 @@ CREATE TABLE User (
 
 -- Ticket status is same as status of last response
 -- Status can be: open, in_progress, fixed, not_fixed
-CREATE TABLE Ticket (
+CREATE TABLE IF NOT EXISTS Ticket (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket
     assigned_to INTEGER, -- organization ID which the ticket is assigned to
@@ -30,7 +30,7 @@ CREATE TABLE Ticket (
 
 -- A ticket can have any number of responses
 -- Each response sets at least one of the fields: assigned_to, status, or text.
-CREATE TABLE Response (
+CREATE TABLE IF NOT EXISTS Response (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
     ticket_id INTEGER NOT NULL,
 	submitted_by INTEGER NOT NULL, -- user ID who submitted the ticket

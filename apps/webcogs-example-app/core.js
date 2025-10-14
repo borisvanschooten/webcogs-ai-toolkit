@@ -13,7 +13,7 @@ export class TicketAppCore extends WebCogsCore {
 		const response = await fetch('/api/getOrganizations');
 		if (!response.ok) throw new Error('Failed to fetch organizations');
 		const data = await response.json();
-		const ret = this.db.convertRecordsToKeyValue(data[0]);
-		return ret;
+		//const ret = this.db.convertRecordsToKeyValue(data[0]);
+		return data;
 	}
 }

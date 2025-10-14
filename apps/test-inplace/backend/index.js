@@ -2,7 +2,7 @@
 @cogs_system_prompt
 @cogs_include "backend.md"
 ## MySQL data structure
-@cogs_include "../../webcogs-example-app/datamodel.sql"
+@cogs_include "../../webcogs-example-app/sql/datamodel.sql"
 */
 
 //Section 1:

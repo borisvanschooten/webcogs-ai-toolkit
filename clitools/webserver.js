@@ -2,47 +2,105 @@ const express = require('express');
 const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
-const initSqlJs = require('sql.js');
 const jwt = require('jsonwebtoken');
 
-// initialised asynchronously by initDB
+const commandLineArgs = require('command-line-args');
+
+
+const optionDefinitions = [
+    { name: 'datafile', alias: 'f', type: String },
+    { name: 'purge', alias: 'p', type: Boolean }, // not implemented yet, just delete the file
+    { name: 'sqlfiles', alias: 's', type: String, multiple: true},
+    { name: 'credentialssql', alias: 'c', type: String, multiple: true},
+]
+
+const options = commandLineArgs(optionDefinitions)
+
+
+// DB handle, possibly initialised asynchronously
 var db = null;
 
+
+// OLD db code -----------------------------------------
+const initSqlJs = require('sql.js');
+
+
 async function initDB() {
-	const SQL = await initSqlJs({});
+    const SQL = await initSqlJs({});
 
-	db = new SQL.Database();
-	var sqlstr = fs.readFileSync("apps/webcogs-example-app/datamodel.sql", "utf8");
-	db.run(sqlstr);
-	sqlstr = 'CREATE TABLE Passwords (\
-		username TEXT NOT NULL,\
-		password TEXT NOT NULL\
-	);\
-  INSERT INTO Passwords VALUES ("alan","admin");\
-  INSERT INTO Passwords VALUES ("johnny","admin");\
-  INSERT INTO Passwords VALUES ("wendy","admin");\
-  '
-	db.run(sqlstr);
+    db = new SQL.Database();
+    var sqlstr = fs.readFileSync("apps/webcogs-example-app/sql/datamodel.sql", "utf8");
+    db.run(sqlstr);
+    sqlstr = 'CREATE TABLE Passwords IF NOT EXISTS (\
+        username TEXT NOT NULL,\
+        password TEXT NOT NULL\
+    );\
+    INSERT INTO Passwords VALUES ("alan","admin");\
+    INSERT INTO Passwords VALUES ("johnny","admin");\
+    INSERT INTO Passwords VALUES ("wendy","admin");\
+    '
+    db.run(sqlstr);
 
-	sqlstr = 
-  'INSERT INTO Organization VALUES (1,"Organization 1","vendor");\
-  INSERT INTO Organization VALUES (2,"Organization 2","vendor");\
-  INSERT INTO Organization VALUES (3,"Organization 3","vendor");\
-  INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith",1,"user");\
-	INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee",2,"developer");\
-  INSERT INTO user VALUES (3,"wendy","wendy-potters@gmail.com","Wendy","Potters",3,"user");\
-  INSERT INTO Ticket VALUES (1,1,2,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01 11:10:00","open");\
-	INSERT INTO Ticket VALUES (2,1,2,"The problem with my phone persists, please help.","2025-07-07 15:30:11","open");\
-	INSERT INTO Ticket VALUES (3,2,NULL,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03 13:33:00","open");\
-	INSERT INTO Ticket VALUES (4,3,NULL,"My PC is sometimes very slow and gets very hot.","2025-07-03 14:12:56","open");\
-	'
-	db.run(sqlstr);
+    sqlstr = 
+    'INSERT INTO Organization VALUES (1,"Organization 1","vendor");\
+    INSERT INTO Organization VALUES (2,"Organization 2","vendor");\
+    INSERT INTO Organization VALUES (3,"Organization 3","vendor");\
+    INSERT INTO user VALUES (1,"johnny","johnsmith@gmail.com","John","Smith",1,"user");\
+    INSERT INTO user VALUES (2,"alan","alansmithee@gmail.com","Alan","Smithee",2,"developer");\
+    INSERT INTO user VALUES (3,"wendy","wendy-potters@gmail.com","Wendy","Potters",3,"user");\
+    INSERT INTO Ticket VALUES (1,1,2,"Hi, I have a problem with my phone.  Internet has stopped working.","2025-07-01 11:10:00","open");\
+    INSERT INTO Ticket VALUES (2,1,2,"The problem with my phone persists, please help.","2025-07-07 15:30:11","open");\
+    INSERT INTO Ticket VALUES (3,2,NULL,"Hi there, my Outlook is flagging important mail as spam. What can I do about this?","2025-07-03 13:33:00","open");\
+    INSERT INTO Ticket VALUES (4,3,NULL,"My PC is sometimes very slow and gets very hot.","2025-07-03 14:12:56","open");\
+    '
+    db.run(sqlstr);
 
-	const res = db.exec("SELECT * FROM User");
-	//console.log(JSON.stringify(res,null,4))
+    const res = db.exec("SELECT * FROM User");
+    //console.log(JSON.stringify(res,null,4))
 }
 
-initDB()
+//initDB()
+
+// NEW db code -------------------------------------------------
+
+
+const {SQLiteBridge} = require('../js/sqlitebridge.js')
+
+
+function readSQLFiles(db,sqlfiles) {
+  if (sqlfiles) {
+      for (var i=0; i<sqlfiles.length; i++) {
+          var filename = sqlfiles[i]
+          console.log(`Executing ${filename}...`)
+          var sqlstr = fs.readFileSync(filename, "utf8");
+          result = db.exec(sqlstr);
+          if (result) console.log(result)
+      }
+  }
+}
+
+var datafile = "databases/webcogs-example-app";
+if (options.datafile) {
+    datafile = options.datafile;
+}
+
+db = new SQLiteBridge(`${datafile}.db`);
+
+readSQLFiles(db,options.sqlfiles)
+
+//console.log(db.query("SELECT * FROM User"))
+
+credentialsdb = new SQLiteBridge(`${datafile}-credentials.db`);
+
+sqlstr = 'CREATE TABLE IF NOT EXISTS Passwords (\
+    username TEXT NOT NULL,\
+    password TEXT NOT NULL\
+);'
+credentialsdb.exec(sqlstr)
+
+readSQLFiles(credentialsdb,options.credentialssql)
+
+
 
 const app = express();
 app.use(cookieParser());
@@ -94,7 +152,7 @@ app.get('/db/run', async (req, res) => {
   }
   // TODO check jwtPayload.timestamp expiry
   try {
-    const result = db.exec(query,params);
+    const result = db.query(query,...params);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -107,7 +165,7 @@ app.get('/api/getOrganizations', async (req, res) => {
     return res.status(503).json({ error: 'Database not initialized' });
   }
   try {
-    const result = db.exec("SELECT id, name, role FROM Organization ORDER BY name");
+    const result = db.query("SELECT id, name, role FROM Organization ORDER BY name");
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -117,7 +175,7 @@ app.get('/api/getOrganizations', async (req, res) => {
 
 
 app.get('/auth/login', async (req, res) => {
-  if (!db) {
+  if (!credentialsdb) {
     return res.status(503).json({ error: 'Database not initialized' });
   }
 
@@ -127,11 +185,16 @@ app.get('/auth/login', async (req, res) => {
   }
 
   try {
-    const result = db.exec(`SELECT User.id,role FROM Passwords, User WHERE Passwords.username = '${username}' AND password = '${password}' AND User.username=='${username}'`);
+    const result = credentialsdb.query(`SELECT * FROM Passwords WHERE Passwords.username = ? AND password = ?`, username, password);
     if (result.length > 0) {
       const doubleSubmitToken = require('crypto').randomBytes(32).toString('hex');
-      const user_id = result[0].values[0][0];
-      const user_role = result[0].values[0][1];
+      const userinfo = db.query("SELECT id,role FROM User WHERE username = ?",username)
+
+      var user_id=null,user_role=null
+      if (userinfo.length > 0) {
+        user_id = userinfo[0].id;
+        user_role = userinfo[0].role;
+      }
       const payload = {
         user_id: user_id,
         username: username,

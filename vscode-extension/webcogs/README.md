@@ -38,7 +38,7 @@ For building separate files, you can use a promptbuildfile which is a JSON file 
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
 		{ "text": "\n## CSS definitions\n\n", "file": "basestyles.css"},
-		{ "text": "\n## SQL table definitions\n\n", "file": "datamodel.sql"}
+		{ "text": "\n## SQL table definitions\n\n", "file": "sql/datamodel.sql"}
 	],
 	"wd": "plugins/",
 	"targets": [
@@ -82,7 +82,7 @@ You can augment your source files with @cogs directives inside multiline comment
 
 ## MySQL data structure
 
-@cogs_include "datamodel.sql"
+@cogs_include "sql/datamodel.sql"
 
 [Enter any other file-wide system prompts here.]
 */

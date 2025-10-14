@@ -6,6 +6,7 @@ export class SQLDb {
 		this.baseurl = baseurl
 		this.authCookieName = authCookieName
 	}
+	// OLD/UNISED: old sqlite interface required objects to be converted from columns/values
 	convertRecordsToKeyValue(records) {
 		var ret = []
 		for (var r=0; r<records.values.length; r++) {
@@ -38,8 +39,8 @@ export class SQLDb {
 			throw new Error("Invalid access")
 		}
 		if (res_obj.length == 0) return []
-		const ret = this.convertRecordsToKeyValue(res_obj[0])
-		//console.log(ret)
+		//const ret = this.convertRecordsToKeyValue(res_obj[0])
+		const ret = res_obj
 		console.log(`SQLDb returned ${ret.length} results.`)
 		return ret
 	}
