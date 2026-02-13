@@ -1,6 +1,6 @@
 {
   "name": "webcogs",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "bin": {
     "buildcog": "./clitools/build_ai_module.js",
     "updatecogsinplace": "./clitools/update_functions_inplace.js",

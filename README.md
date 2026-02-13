@@ -27,7 +27,7 @@ As an alternative to the chatbot, there is also a simple tool for AI processing 
 callllm --prompt <prompt> --model <model>
 ```
 
-Note the default model is gpt-5.  You can also use stdin to pipe prompts into the tool, which will be concatenated after the prompt given with the '--prompt' option. For example:
+Note the default model is gpt-5.2.  You can also use stdin to pipe prompts into the tool, which will be concatenated after the prompt given with the '--prompt' option. For example:
 
 ```
 callllm --prompt 'Translate the following text into Dutch:' --model gpt-5-mini <english-text.txt
@@ -91,7 +91,7 @@ Prompt buildfile format is as follows:
 	"description": "Simple demo app for demonstrating WebCogs plugins",
 	"version": "0.1",
 	"ai_vendor": "openai",
-	"ai_model": "gpt-5",
+	"ai_model": "gpt-5.2",
 	"system_prompts": [
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },

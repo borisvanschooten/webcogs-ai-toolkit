@@ -26,7 +26,7 @@ if (options.prompt) {
 	prompt = options.prompt+" "+prompt
 }
 
-var model = "gpt-5"
+var model = "gpt-5.2"
 if (options.model) model = options.model
 
 

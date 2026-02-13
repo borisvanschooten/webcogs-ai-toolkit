@@ -18,6 +18,8 @@ class UpdateCogsInPlace {
 	system_prompt = "";
 	funcname = null;
 	func_prompt = "";
+	funcSpecs = {} // funcname -> function spec, for use by @cogs_ref
+	submittedPrompts = [] // array of prompt texts
 
 	constructor(client,fileContent,basePath,buildTargets,vendor,model) {
 		this.fileContent = fileContent
@@ -190,38 +192,52 @@ class UpdateCogsInPlace {
 
 
 	async writeOldFunc(selfClosing) {
-		if (!this.funcname || !this.isBuildTarget(this.funcname)) {
+		// no func name -> reset and stop
+		if (!this.funcname) {
 			this.funcname = null
 			this.func_prompt = ""
-			return;
+			return
 		}
-		if (this.func_prompt != "") {
-			// write out previous function
-			console.log(`>> Generating ${this.funcname}...`)
-			//console.log(system_prompt)
-			//console.log(func_prompt)
-			this.func_prompt = "Create a function named '"+this.funcname+"' according to the following specifications.  These must specify the function behaviour, parameters, and format of the return value precisely and unambiguously, and nothing should be omitted that prevents you from writing the full code. If not, call the report_error tool with a detailed description of the problems, otherwise the create_function tool. Do not write function documentation. Only call a single tool.  Do not explain what you have done.\n" + this.func_prompt
-			var messages = [
-				{
-					"role": "developer",
-					"content": this.system_prompt,
-				},{
-					"role": "user",
-					"content": this.func_prompt,
-				}
-			]
-			// output is LLM talk, which is ignored
-			// forcing tool calls results in calling the tool 3x with the same input (o3-mini)
-			var output = await callLLM.callLLM(this.client,messages,this.tools,"aifn_",this,this.model,2,null,2000,"auto")
-			console.log("AI chat output:")
-			console.log(output)
-			if (selfClosing) {
-				console.log(">> Self-closing code section.")
-				this.newFileContent += "/*@cogs_endfunc*/\n"
+		// no function spec defined -> reset and stop
+		if (!this.func_prompt) {
+			this.funcname = null
+			this.func_prompt = ""
+			return
+		}
+		// store func spec for later reference by @cogs_ref
+		this.funcSpecs[this.funcname] = this.func_prompt
+		// func not a build target? finished now.
+		if (!this.isBuildTarget(this.funcname)) {
+			this.funcname = null
+			this.func_prompt = ""
+			return
+		}
+		// build
+		console.log(`>> Generating ${this.funcname}...`)
+		//console.log(system_prompt)
+		//console.log(func_prompt)
+		this.func_prompt = "Create a function named '"+this.funcname+"' according to the following specifications.  These must specify the function behaviour, parameters, and format of the return value unambiguously. If not, call the report_error tool with a detailed description of the problems, otherwise the create_function tool. Do not write function documentation. Only call a single tool.  Do not explain what you have done.\n" + this.func_prompt
+		var messages = [
+			{
+				"role": "developer",
+				"content": this.system_prompt,
+			},{
+				"role": "user",
+				"content": this.func_prompt,
 			}
-			this.funcname = null
-			this.func_prompt = ""
+		]
+		// output is LLM talk, which is ignored
+		// forcing tool calls results in calling the tool 3x with the same input (o3-mini)
+		this.submittedPrompts.push(`System prompt:\n${this.system_prompt}\n\nFunction prompt:\n${this.func_prompt}`)
+		var output = await callLLM.callLLM(this.client,messages,this.tools,"aifn_",this,this.model,2,null,2000,"auto")
+		console.log("AI chat output:")
+		console.log(output)
+		if (selfClosing) {
+			console.log(">> Self-closing code section.")
+			this.newFileContent += "/*@cogs_endfunc*/\n"
 		}
+		this.funcname = null
+		this.func_prompt = ""
 	}
 
 
@@ -293,12 +309,14 @@ class UpdateCogsInPlace {
 		this.system_prompt = ""
 		this.funcname = null
 		this.func_prompt = ""
+		this.funcSpecs = {}
+		this.submittedPrompts = []
 		for (var i=0; i<sections.length; i++) {
 			var section = sections[i].text
 			if (sections[i].kind == "comment") {
 				var sec = section.slice(2, -2) // strip comment symbols
 				// capture all commands and parameters in separate groups
-				var regex2 = /(@cogs_system_prompt)|(@cogs_func)\s+([a-zA-Z0-9_]+)|(@cogs_include)\s+"([^"]+)"|(@cogs_endfunc)/g
+				var regex2 = /(@cogs_system_prompt)|(@cogs_func)\s+([a-zA-Z0-9_]+)|(@cogs_include)\s+"([^"]+)"|(@cogs_ref)\s+"([^"]+)"|(@cogs_endfunc)/g
 				var groups = sec.split(regex2)
 				// remove empty capture groups which show up as undefined
 				groups = groups.filter(element => element !== undefined);
@@ -318,6 +336,8 @@ class UpdateCogsInPlace {
 							mode = "func"
 						} else if (groups[idx] == "@cogs_include") {
 							throw new Error("@cogs_include must be inside system or function prompt")
+						} else if (groups[idx] == "@cogs_ref") {
+							throw new Error("@cogs_ref must be inside system or function prompt")
 						} else if (groups[idx] == "@cogs_endfunc") {
 							if (this.func_prompt != "") {
 								await this.writeOldFunc(false)
@@ -340,6 +360,8 @@ class UpdateCogsInPlace {
 							filePrompt = filePrompt.replaceAll("\r\n","\n")
 							this.system_prompt += filePrompt;
 							idx += 1
+						} else if (groups[idx] == "@cogs_ref") {
+							throw new Error("@cogs_ref not allowed in system prompt")
 						} else if (groups[idx] == "@cogs_endfunc") {
 							throw new Error("@cogs_endfunc not allowed in system prompt")
 						} else { // bare text
@@ -355,6 +377,15 @@ class UpdateCogsInPlace {
 							var filePromptPath = path.join(this.basePath, groups[idx+1]);
 							var filePrompt = fs.readFileSync(filePromptPath, 'utf-8');
 							this.func_prompt += filePrompt;
+							idx += 1
+						} else if (groups[idx] == "@cogs_ref") {
+							var refFunc = groups[idx+1]
+							if (typeof this.funcSpecs[refFunc] === "undefined") {
+								throw new Error(`@cogs_ref refers to a function "${refFunc}" that was not previously defined`)
+							}
+							//throw new Error(`Including reference ${refFunc} => ${this.funcSpecs[refFunc]}`)
+							// add function spec to prompt
+							this.func_prompt += this.funcSpecs[refFunc];
 							idx += 1
 						} else if (groups[idx] == "@cogs_endfunc") {
 							throw new Error("@cogs_endfunc not allowed inside function prompt")
@@ -391,7 +422,7 @@ class UpdateCogsInPlace {
 			}
 		}
 		await this.writeOldFunc(true)
-		return {text: this.newFileContent, diffs: this.fileDiffs}
+		return {text: this.newFileContent, diffs: this.fileDiffs,prompts:this.submittedPrompts}
 	}
 }
 

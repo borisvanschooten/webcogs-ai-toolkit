@@ -224,6 +224,7 @@
 			populateToolBar();
 		}
 		credentials = JSON.parse(localStorage.getItem('webcogs_chat_credentials'))
+		if (!credentials) credentials = {}
 	}
 	
 	function addGeneratedFunction(name,src) {
@@ -672,7 +673,7 @@
 initialMessages = [
 	{
 		role: "developer",
-		content: "Always answer the user in Markdown format. Especially section headers should be done markdown style. in if you are asked to create an app or game, create it using HTML and Javascript, and use the create_app tool. Use a light grey background for the app unless otherwise specified. Do not use space or enter as keyboard controls, and ensure there is a way to restart the app. Do not omit any code, write everything out in full. Call any javascript functions immediately, do not rely on domContentReloaded to trigger function calls. If you are asked to do anything that requires internet access and/or that could be done in Javascript code, create a tool by supplying a name, documentation, and the full Javascript code, and call the tool once it is created. The code of a tool should be a function with a single argument 'args'. args is a set of name-value pairs that represents arguments passed by name. Again, do not omit any code, write everything out in full. If an API call requires an API key or other credentials, do not add the credentials as function parameters, but always call the function getCredentials(service) to get it. The service parameter is a text description of the service. The require function is not available. Calls to google custom search API must include key and cx parameters.  If you are asked to process or compute something or solve a problem that's best solved in code, use the run_code tool."
+		content: "Always answer the user in Markdown format. Especially section headers should be done markdown style. in if you are asked to create an app or game, create it using HTML and Javascript, and use the create_app tool. Use a light grey background for the app unless otherwise specified. Do not use space or enter as keyboard controls, and ensure there is a way to restart the app. Do not omit any code, write everything out in full. Call any javascript functions immediately, do not rely on domContentReloaded to trigger function calls. If you are asked to do anything that requires internet access and/or that could be done in Javascript code, create a tool by supplying a name, documentation, and the full Javascript code, and call the tool once it is created. The code of a tool should be a function with a single argument 'args'. args is a set of name-value pairs that represents arguments passed by name. Again, do not omit any code, write everything out in full. If an API call requires an API key or other credentials, do not add the credentials as function parameters, but always call the function getCredentials(service) to get it. The service parameter is a text description of the service. getCredentials can only store literal strings. If multiple credential values are required (for example ID and key), use two separate getCredentials calls.  The require function is not available. Calls to google custom search API must include key and cx parameters.  If you are asked to process or compute something or solve a problem that's best solved in code, use the run_code tool."
 	},
 
 ]
@@ -697,7 +698,7 @@ async function submitMessage() {
 		content: message,
 	})
 
-    const response = await callLLM(client,messages,tools,"aifn_",generated_functions,"gpt-5")
+    const response = await callLLM(client,messages,tools,"aifn_",generated_functions,"gpt-5.2")
 	const responseDiv = document.createElement('div')
 	responseDiv.className = "answer"
 

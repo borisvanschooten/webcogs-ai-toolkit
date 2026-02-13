@@ -152,7 +152,7 @@ const options = commandLineArgs(optionDefinitions)
 
 
 if (!options.language || !options.output || (!options.sourcefiles && !options.pofile)) {
-    console.error('Usage: translatecog  --language <target_language>  --output <output_file.json>  [--pofile <pofile.po> ]?  [ --sourcefiles  <input_files> ]+ [ --override <manualtranslations.json> ]? [ --automatic ]? [ --prompt <promptstring> ]? ');
+    console.error('Usage: cogstranslate  --language <target_language>  --output <output_file.json>  [--pofile <pofile.po> ]?  [ --sourcefiles  <input_files> ]+ [ --override <manualtranslations.json> ]? [ --automatic ]? [ --prompt <promptstring> ]? ');
     process.exit(1);
 }
 

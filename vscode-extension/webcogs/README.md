@@ -1,6 +1,6 @@
 # Webcogs VSCode extension
 
-Part of the Webcogs open source experimental AI software engineering toolkit, which facilitates using **an LLM as a compiler**. The extension provides a CodeLens alternative for the **buildcog** and **buildcogsinplace** command line tools.
+Part of the Webcogs open source experimental AI software engineering toolkit, which facilitates using **an LLM as a compiler**. The extension provides a CodeLens alternative for the **buildcog** and **updatecogsinplace** command line tools.
 
 ## Features
 
@@ -20,7 +20,8 @@ The main idea behind Webcogs is that it allows you to use the **LLM as a compile
 
 You have to activate the codelenses from the command palette. Type Shift-Ctrl-P, then select *"Webcogs: Enable Webcogs Codelens"*. 
 
-You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises for the first time.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. Note the tool now uses the new GPT-5 model by default, which is supposed to be as good as O3, which gives me good results, and is low-cost (about $0.01 to generate a function, $0.02 to generate a class).
+You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises for the first time.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. The tool now uses the new GPT-5.2 model by default. Cost (about $0.01-$0.02 to generate a function, $0.02-$0.04 to generate a class).
+
 
 ### Building files via a buildfile
 
@@ -33,7 +34,7 @@ For building separate files, you can use a promptbuildfile which is a JSON file 
 	"description": "Simple demo app for demonstrating WebCogs plugins",
 	"version": "0.1",
 	"ai_vendor": "openai",
-	"ai_model": "gpt-5",
+	"ai_model": "gpt-5.2",
 	"system_prompts": [
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
@@ -117,9 +118,11 @@ This extension contributes the following settings:
 * `webcogs.enableCodeLens`: Enable extension.
 * `webcogs.disableCodeLens`: Disable extension.
 
-## Known Issues
+## Quirks and Known Issues
 
-This is as yet an experimental plugin. Error handling still needs work.
+I built this extension for my own use, and it's not particularly user friendly yet.  Some errors are reported in the console only, so you have to open the terminal to see them.  Choose Terminal->New Terminal, then select the Output tab, and select Extension Host in the dropdown on the right.
+
+If you build a function inside a file, it will invoke the LLM in the background, which may take a couple of minutes to complete.  When it's finished, it will re-read the source file, and insert the result at the @cogs_func <name> block it finds at that moment.  So if you remove the block or change the name in the meantime, it will not find the block and will abort.  It will also abort if you switch the editor to another file, so you have to keep the file open while it is processing.
 
 ## How to re-build from source
 

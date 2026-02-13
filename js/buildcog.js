@@ -167,7 +167,7 @@ class BuildCog {
 	}
 
 	getModel() {
-		return this.manifest.model ? this.manifest.model : "gpt-5"
+		return this.manifest.model ? this.manifest.model : "gpt-5.2"
 	}
 
 	remove_build_timestamp(prompt) {

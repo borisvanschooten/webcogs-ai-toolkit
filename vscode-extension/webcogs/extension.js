@@ -219,9 +219,9 @@ function getInsertRange(document,funcName) {
 			} else {
 				if (token == "/*") {
 					// start of multiline comment
-					if (endline === null) {
+					//if (endline === null) {
 						endline = linenr
-					}
+					//}
 				} else {
 					endline = null
 				}
@@ -282,6 +282,8 @@ function activate(context) {
 		var buildcog = new BuildCog(openaiclient, opName, [targetName], fileName)
 		buildcog.runCommand().then( (err) => {
 			vscode.window.showInformationMessage(`Finished building ${targetName}.`);			
+		}).catch( (err) => {
+			vscode.window.showInformationMessage(`${err}`);
 		})
 	})
 
@@ -291,8 +293,12 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, funcName, "openai", "gpt-5")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.2")
 		parser.parseFile().then( (update) => {
+			// show prompts (debug feature)
+			//for (var i=0; i<update.prompts.length; i++) {
+			//	vscode.window.showInformationMessage("Prompt",{detail:`${update.prompts[i]}`,modal: true});
+			//}
 			//console.log(update.diffs)
 			for (var i=0; i<update.diffs.length; i++) {
 				var diff = update.diffs[i] 
@@ -309,6 +315,8 @@ function activate(context) {
 					console.log(`Function ${funcName} not found.`)
 				}
 			}
+		}).catch( (err) => {
+			vscode.window.showInformationMessage(`${err}`);
 		})
 
 		/*console.log(args)
