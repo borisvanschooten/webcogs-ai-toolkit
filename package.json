@@ -1,9 +1,10 @@
 {
   "name": "webcogs",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "bin": {
     "buildcog": "./clitools/build_ai_module.js",
     "updatecogsinplace": "./clitools/update_functions_inplace.js",
+    "expandcogs": "./clitools/expand_cogs.js",
     "cogstranslate": "./clitools/translate.js",
     "callllm": "./clitools/callllm.js"
   },

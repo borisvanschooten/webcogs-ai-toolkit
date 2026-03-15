@@ -27,7 +27,7 @@ As an alternative to the chatbot, there is also a simple tool for AI processing 
 callllm --prompt <prompt> --model <model>
 ```
 
-Note the default model is gpt-5.2.  You can also use stdin to pipe prompts into the tool, which will be concatenated after the prompt given with the '--prompt' option. For example:
+Note the default model is gpt-5.4.  You can also use stdin to pipe prompts into the tool, which will be concatenated after the prompt given with the '--prompt' option. For example:
 
 ```
 callllm --prompt 'Translate the following text into Dutch:' --model gpt-5-mini <english-text.txt
@@ -91,7 +91,7 @@ Prompt buildfile format is as follows:
 	"description": "Simple demo app for demonstrating WebCogs plugins",
 	"version": "0.1",
 	"ai_vendor": "openai",
-	"ai_model": "gpt-5.2",
+	"ai_model": "gpt-5.4",
 	"system_prompts": [
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
@@ -190,6 +190,24 @@ var core = new MyCore(db)
 
 /* More manually managed code */
 
+/* ------- UNIT TESTS ------- */
+
+/** @cogs_system_prompt
+ * # Unit tests
+ * @cogs_include "unit_test_instructions.md"
+ */
+
+/**@cogs_func _unittest_getTicketsByOrganization
+* This method is a unit test for the method that is described below.
+* @cogs_ref "getTicketsByOrganization"
+*/
+
+/* Unit test code will be generated here */
+
+/* @cogs_endfunc */
+
+/* More manually managed code */
+
 var tickets = getTicketsByOrganization(core,org_id)
 console.log(tickets)
 [...]
@@ -204,6 +222,8 @@ For every to-be-generated function, you add a **@cogs_func <funcname>** directiv
 So, the AI is expressly told to check if the docs are precise enough, and produce an error if not.  The error will show up as a single-line comment starting with **@cogs_func_error**, where the generated code would normally be placed.  This produces quite meaningful error messages in my experience.  Without this instruction, the AI will usually try to guess what the user wants, even if the prompt obviously contains errors or ambiguities.
 
 When code is generated, it is inserted between **@cogs_func** and the next multiline comment that contains the directive **@cogs_endfunc**.  So, if you forget the **@cogs_endfunc**, it may replace the contents of the entire file, so be careful not to forget them.  Note that **@cogs_func** is "self-closing", HTML tag style.  A new comment containing **@cogs_func** will automatically close the previous function section, and **@cogs_endfunc** is added automatically at generation.
+
+THe second **@cogs_func** block specifies a unit test, referring to a previously defined function.  The function specification is included via the **@cogs_ref "\<funcname\>"** directive.  By preceding it with generic unit test instructions, you can easily generate unit tests.  You can include the unit test instructions from an external file via **@cogs_include** and/or include it in the system prompt, by defining a **@cogs_system_prompt** block between the original functions and the test functions, so it's only included in the test functions.  A current limitation is that **@cogs_ref** can only refer to previous functions in the same file.
 
 Once you have created a source file with the right directives in place, you can generate the code using the following command:
 

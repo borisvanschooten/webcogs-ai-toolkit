@@ -208,20 +208,22 @@
 			return {
 				tool: tool,
 				function_src: generated_functions_src[tool.function.name],
+				controlpanel_src: generated_functions_src[tool.function.name+".controlpanel"],
 			};
 		});
 		console.log(toolsInfo)
 		localStorage.setItem('webcogs_chat_generated_tools', JSON.stringify(toolsInfo));
 		localStorage.setItem('webcogs_chat_credentials', JSON.stringify(credentials));
 	}
-	function loadFromLocalStorage() {
+	async function loadFromLocalStorage() {
 		var toolsInfo = JSON.parse(localStorage.getItem('webcogs_chat_generated_tools'))
 		if (toolsInfo) {
 			toolsInfo.forEach(function(toolObj) {
 				generated_tools.push(toolObj.tool);
 				addGeneratedFunction(toolObj.tool.function.name, toolObj.function_src)
+				addGeneratedFunction(toolObj.tool.function.name+".controlpanel", toolObj.controlpanel_src)
 			});
-			populateToolBar();
+			await populateToolBar();
 		}
 		credentials = JSON.parse(localStorage.getItem('webcogs_chat_credentials'))
 		if (!credentials) credentials = {}
@@ -264,7 +266,7 @@
 		"type": "function",
 		"function": {
 			"name": "create_tool",
-			"description": "Create a tool which can be used later. The tool has access to the internet. It must be written in plain Javascript as a single function expression with one parameter 'args'. Tools can be used to perform actions and retrieve information, but can show information to the user via the function showToUser(html_code). This creates an iframe that shows the given HTML page to the user.",
+			"description": "Create a tool which can be used later. The tool has access to the internet. It must be written in plain Javascript as a single function expression with one parameter 'args'. Tools can be used to perform actions and retrieve information, but can show information to the user via the function showToUser(html_code). This creates an iframe that shows the given HTML page to the user. A tool can also have a permanent user visible control panel, which can be defined using a separate function expression that returns a DIV which contains the control panel.",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -284,9 +286,13 @@
 						"type": "string",
 						"description": "The Javascript function expression with one parameter 'args', which contains the function arguments as name-value pairs."
 					},
+					"controlpanel": {
+						"type": "string",
+						"description": "A function expression that returns a DIV that can be shown as a control panel. Pass null if there is no control panel."
+					},
 				},
 				"required": [
-					"name", "description", "arguments", "code",
+					"name", "description", "arguments", "code", "controlpanel"
 				],
 				"additionalProperties": false
 			},
@@ -323,9 +329,12 @@
 
 	const AsyncFunction = async function () {}.constructor;
 
-	function addToolToLibrary(toolspec,code) {
+	function addToolToLibrary(toolspec,code,controlpanel) {
 		// can throw exception if the code does not compile. Then, no tool is defined.
 		addGeneratedFunction(toolspec.function.name, code)
+		if (controlpanel) {
+			addGeneratedFunction(toolspec.function.name+".controlpanel", controlpanel)
+		}
 		generated_tools.push(toolspec)
 		populateToolBar()
 		saveToLocalStorage()
@@ -370,7 +379,7 @@
 	function aifn_create_app(args) {
 		name = args["name"]
 		code = args["code"]
-		code = code.replace("\\n","\n")
+		//code = code.replace("\\n","\n") // XXX this was added to repair common AI mistakes
 		console.log(code)
 		const responseElement = document.getElementById('response')
 		const iframe = document.createElement("iframe")
@@ -405,11 +414,13 @@
 		var name = args.name
 		var code = args.code.replace("\\n","\n")
 		var description = args.description
+		var controlpanel = args.controlpanel || null;
 
         var arguments = typeof args.arguments === "string" ? JSON.parse(args.arguments.replace("\\n","\n")) : args.arguments
         var argumentKeys = Object.keys(arguments);
 
 		var funcstr = `var inner_f = ${code}; var ret = await inner_f(args); return ret;`
+		var controlfuncstr = controlpanel ? `var inner_f = ${controlpanel}; var ret = await inner_f(); return ret;` : null
 		var tool = {
 			"type": "function",
 			"function": {
@@ -425,7 +436,7 @@
 			},
 		}
 		console.log(tool)
-		addToolToLibrary(tool,funcstr)
+		addToolToLibrary(tool,funcstr,controlfuncstr)
 		return "Success"
 		//var ret = await f({query: "Vibe coding"})
 		//console.log("Tool returns:")
@@ -511,7 +522,7 @@
 			if (findTool(obj.tool.function.name)) {
 				alert(`A tool named '${obj.tool.function.name}' already exists.`)
 			} else {
-				addToolToLibrary(obj.tool,obj.function_src)
+				addToolToLibrary(obj.tool,obj.function_src,obj.controlpanel_src)
 			}
 		})
 	}
@@ -582,7 +593,7 @@
 		console.log(disabled_tools)
 	}
 
-	function populateToolDiv(elem,tools,deletable) {
+	function populateToolDiv(elem,tools,deletable,enabled) {
         elem.innerHTML = ''; // Clear existing content
         tools.forEach(tool => {
             const toolDiv = document.createElement('div');
@@ -592,7 +603,7 @@
 			const checkbox      = document.createElement('input');
 			checkbox.type       = 'checkbox';
 			checkbox.id         = 'toolEnabled';
-			checkbox.checked = true;
+			if (enabled) checkbox.checked = true;
 			checkbox.addEventListener('change', (function(name) {return function() {
 				setToolEnabled(name,event.target.checked);   // true if checked, false if unchecked
 			}})(tool.function.name));
@@ -613,6 +624,7 @@
 						downloadText(JSON.stringify({
 							tool: findTool(name),
 							function_src: generated_functions_src[name],
+							controlpanel_src: generated_functions_src[name+".controlpanel"],
 						},null,4), "WebCogsTool_"+name+".json")
 					}})(tool.function.name) },
 					{text:"⭳ Download Code", callback: (function(name) {return function() {
@@ -622,7 +634,15 @@
 						uploadFile(function(src) {
 							addGeneratedFunction(name, src)
 							saveToLocalStorage()
-
+						})
+					}})(tool.function.name) },
+					{text:"⭳ Download Control Panel", callback: (function(name) {return function() {
+						downloadText(generated_functions_src[name+".controlpanel"], "WebCogsTool_"+name+"_controlpanel_src.js")
+					}})(tool.function.name) },
+					{text:"⭱ Replace Control Panel", callback: (function(name) {return function() {
+						uploadFile(function(src) {
+							addGeneratedFunction(name+".controlpanel", src)
+							saveToLocalStorage()
 						})
 					}})(tool.function.name) },
 				])
@@ -639,9 +659,23 @@
             elem.appendChild(dividerDiv);
         });
 	}
-	function populateToolBar() {
-		populateToolDiv(document.getElementById("ai_tools"),tools,false)
-		populateToolDiv(document.getElementById("ai_generated_tools"),generated_tools,true)
+	async function populateToolBar() {
+		populateToolDiv(document.getElementById("ai_tools"),tools,false,true)
+		populateToolDiv(document.getElementById("ai_generated_tools"),generated_tools,true,true)
+		// create control panels
+		const parent = document.getElementById("ai_control_panels")
+		parent.innerHTML = ""
+		console.log("Start loop")
+		for (var i=0; i<generated_tools.length; i++) {
+			tool = generated_tools[i]
+			if (generated_functions_src[tool.function.name+".controlpanel"]) {
+				console.log("Found control panel")
+				const parent = document.getElementById("ai_control_panels")
+				const controlPanelDiv = await generated_functions[tool.function.name+".controlpanel"]()
+				//console.log(controlPanelDiv)
+				parent.appendChild(controlPanelDiv)
+			}
+		}
 	}
 
 	client = new OpenAI.OpenAI({apiKey: openai_apikey, dangerouslyAllowBrowser: true})
@@ -656,6 +690,8 @@
 	<div id="ai_tools"></div>
 	<div class="subtitle">Custom Tools</div>
 	<div id="ai_generated_tools"></div>
+	<div class="subtitle">Control panels</div>
+	<div id="ai_control_panels"></div>
 	<button onclick="importToolFromFile()">Import tool</button>
 </div>
 <div id="maincontainer" class="maincontainer">
@@ -698,7 +734,7 @@ async function submitMessage() {
 		content: message,
 	})
 
-    const response = await callLLM(client,messages,tools,"aifn_",generated_functions,"gpt-5.2")
+    const response = await callLLM(client,messages,tools,"aifn_",generated_functions,"gpt-5.4")
 	const responseDiv = document.createElement('div')
 	responseDiv.className = "answer"
 
@@ -719,7 +755,7 @@ async function submitMessage() {
     spinnerDiv.remove();
 }
 loadFromLocalStorage()
-populateToolBar()
+//populateToolBar()
 </script>
 </body>
 </html>

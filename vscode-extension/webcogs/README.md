@@ -18,9 +18,9 @@ The main idea behind Webcogs is that it allows you to use the **LLM as a compile
 
 ## How to use
 
-You have to activate the codelenses from the command palette. Type Shift-Ctrl-P, then select *"Webcogs: Enable Webcogs Codelens"*. 
+You have to activate the codelenses from the command palette. Type Shift-Ctrl-P, then select *"Webcogs: Enable Webcogs Codelens"*. You should get "(Re)build buttons in the prompt buildfiles below each target, and (re)build, assess, and show prompt buttons below each **@cogs_func** block in your code. Also an activity bar view is added where code assessments are shown.  These are created uding the "assess" button or when the AI thinks your specification is not precise enough.
 
-You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises for the first time.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. The tool now uses the new GPT-5.2 model by default. Cost (about $0.01-$0.02 to generate a function, $0.02-$0.04 to generate a class).
+You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises for the first time.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. The tool now uses the new GPT-5.4 model by default. Cost (about $0.01-$0.02 to generate a function, $0.02-$0.04 to generate a class).
 
 
 ### Building files via a buildfile
@@ -34,7 +34,7 @@ For building separate files, you can use a promptbuildfile which is a JSON file 
 	"description": "Simple demo app for demonstrating WebCogs plugins",
 	"version": "0.1",
 	"ai_vendor": "openai",
-	"ai_model": "gpt-5.2",
+	"ai_model": "gpt-5.4",
 	"system_prompts": [
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
@@ -104,9 +104,28 @@ You can augment your source files with @cogs directives inside multiline comment
 // more manually crafted code can be put here
 ```
 
+You can also include a @cogs_func specification from a previous function in the same file via the @cogs_ref directive.  You can use this for creating unit tests, for example. Imagine you want to generate a unit test for a previously defined function setDataType. You can just specify:
+
+```javascript
+/** @cogs_func _unittest_setDataType
+* @cogs_include "../docs/unit-testing.md" 
+* @cogs_ref "setDataType"
+*/
+/* @cogs_endfunc */
+```
+
+This will insert the @cogs_func block for setDataType inside the _unittest_setDataType block. You can then specify generic unit test instructions in *unit-testing.md*, something like:
+
+```
+This method is a unit test for the method that is described below.
+The unit test should be subdivided into test cases, which test any relevant edge cases and failure states. 
+[...further instructions of how unit tests should be written...]
+The specification of the method to test follows.
+```
+
 There's no accept/reject dialog after generating code yet, but the code generations can be undone with regular undo (Ctrl-Z).
 
-Building a function takes around 10 seconds, but you can build multiple functions in parallel.
+Building a function takes around 20-150 seconds, but you can build multiple functions in parallel.
 
 For full documentation, see the Github repo:
 [https://github.com/borisvanschooten/webcogs-ai-toolkit](https://github.com/borisvanschooten/webcogs-ai-toolkit)

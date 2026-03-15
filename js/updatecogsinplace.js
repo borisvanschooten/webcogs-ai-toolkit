@@ -20,6 +20,8 @@ class UpdateCogsInPlace {
 	func_prompt = "";
 	funcSpecs = {} // funcname -> function spec, for use by @cogs_ref
 	submittedPrompts = [] // array of prompt texts
+	assessments = [] // array of assessment lists (an array each)
+	cleaned = "" // original file, but with @cogs_include expanded
 
 	constructor(client,fileContent,basePath,buildTargets,vendor,model) {
 		this.fileContent = fileContent
@@ -51,10 +53,15 @@ class UpdateCogsInPlace {
 		var code = args.source_code.replaceAll("\r\n","\n")
 		this.addText(code+"\n")
 	}
-	report_error(args) {
-		var error_message = args.error_message.replaceAll("\r"," ")
-		error_message = error_message.replaceAll("\n"," ")
-		this.addText("//@cogs_func_error "+error_message+"\n")
+	report_assessment(args) {
+		var items = []
+		for (var i=0; i<args.assessment_items.length; i++) {
+			var item = args.assessment_items[i].replaceAll("\r"," ")
+			item = item.replaceAll("\n"," ")
+			items.push(item)
+		}
+		this.assessments.push(items)
+		//this.addText("//@cogs_func_error "+assessment_items+"\n")
 	}
 
 	tools = [
@@ -82,18 +89,19 @@ class UpdateCogsInPlace {
 		{
 			"type": "function",
 			"function": {
-				"name": "report_error",
-				"description": "Reports an error to the user.",
+				"name": "report_assessment",
+				"description": "Reports an assessment to the user, described as an array of points.",
 				"parameters": {
 					"type": "object",
 					"properties": {
-						"error_message": {
-							"type": "string",
-							"description": "The error message, clearly describing the error",
+						"assessment_items": {
+							"type": "array",
+							"items": { "type": "string" },
+							"description": "Array of assessment strings, describing your assessment points",
 						},
 					},
 					"required": [
-						"error_message"
+						"assessment_items"
 					],
 					"additionalProperties": false
 				},
@@ -191,7 +199,7 @@ class UpdateCogsInPlace {
 	}
 
 
-	async writeOldFunc(selfClosing) {
+	async writeOldFunc(action,selfClosing) {
 		// no func name -> reset and stop
 		if (!this.funcname) {
 			this.funcname = null
@@ -213,10 +221,17 @@ class UpdateCogsInPlace {
 			return
 		}
 		// build
-		console.log(`>> Generating ${this.funcname}...`)
 		//console.log(system_prompt)
 		//console.log(func_prompt)
-		this.func_prompt = "Create a function named '"+this.funcname+"' according to the following specifications.  These must specify the function behaviour, parameters, and format of the return value unambiguously. If not, call the report_error tool with a detailed description of the problems, otherwise the create_function tool. Do not write function documentation. Only call a single tool.  Do not explain what you have done.\n" + this.func_prompt
+		if (action == "build") {
+			console.log(`>> Generating ${this.funcname}...`)
+			this.func_prompt = "Create a function named '"+this.funcname+"' according to the following specifications.  These must specify the function behaviour, parameters, and format of the return value unambiguously. If not, call the report_assessment tool with an array of detailed problem descriptions, otherwise the create_function tool. Do not write function documentation. Only call a single tool.  Do not explain what you have done.\n" + this.func_prompt
+		} else if (action == "assess") {
+			console.log(`>> Assessing ${this.funcname}...`)
+			this.func_prompt = "Assess the following specifications, which specify a function named '"+this.funcname+"'.  Check if these specify the function behaviour, parameters, and format of the return value correctly and unambiguously.  Call the report_assessment tool with an array of detailed problem descriptions. Only call a single tool.  Do not explain what you have done.\n" + this.func_prompt
+		} else { // "none"
+			// do nothing, just add the submitted prompt
+		}
 		var messages = [
 			{
 				"role": "developer",
@@ -229,9 +244,11 @@ class UpdateCogsInPlace {
 		// output is LLM talk, which is ignored
 		// forcing tool calls results in calling the tool 3x with the same input (o3-mini)
 		this.submittedPrompts.push(`System prompt:\n${this.system_prompt}\n\nFunction prompt:\n${this.func_prompt}`)
-		var output = await callLLM.callLLM(this.client,messages,this.tools,"aifn_",this,this.model,2,null,2000,"auto")
-		console.log("AI chat output:")
-		console.log(output)
+		if (action != "none") {
+			var output = await callLLM.callLLM(this.client,messages,this.tools,"aifn_",this,this.model,2,null,2000,"auto")
+			console.log("AI chat output:")
+			console.log(output)
+		}
 		if (selfClosing) {
 			console.log(">> Self-closing code section.")
 			this.newFileContent += "/*@cogs_endfunc*/\n"
@@ -298,8 +315,11 @@ class UpdateCogsInPlace {
 		return parts;
 	}
 
-	/** NOTE: Linebreaks of output are normalised to "\n", you have to convert it back to the document linebreak type. */
-	async parseFile() {
+	/** NOTE: Linebreaks of output are normalised to "\n", you have to convert it back to the document linebreak type.
+	 * @param action  "none", "build", or "assess". Default is "build"
+	 */
+	async parseFile(action) {
+		if (!action) action = "build"
 		// normalise linebreaks
 		var fileContent = this.fileContent.replaceAll("\r\n","\n")
 
@@ -311,9 +331,12 @@ class UpdateCogsInPlace {
 		this.func_prompt = ""
 		this.funcSpecs = {}
 		this.submittedPrompts = []
+		this.assessments = []
+		this.cleaned = ""
 		for (var i=0; i<sections.length; i++) {
 			var section = sections[i].text
 			if (sections[i].kind == "comment") {
+				this.cleaned += "/*"
 				var sec = section.slice(2, -2) // strip comment symbols
 				// capture all commands and parameters in separate groups
 				var regex2 = /(@cogs_system_prompt)|(@cogs_func)\s+([a-zA-Z0-9_]+)|(@cogs_include)\s+"([^"]+)"|(@cogs_ref)\s+"([^"]+)"|(@cogs_endfunc)/g
@@ -327,10 +350,10 @@ class UpdateCogsInPlace {
 					//console.log("Next group: #"+groups[idx]+"#")
 					if (mode == "start") {
 						if (groups[idx] == "@cogs_system_prompt") {
-							await this.writeOldFunc(true)
+							await this.writeOldFunc(action,true)
 							mode = "system"
 						} else if (groups[idx] == "@cogs_func") {
-							await this.writeOldFunc(true)
+							await this.writeOldFunc(action,true)
 							this.funcname = groups[idx+1]
 							idx += 1
 							mode = "func"
@@ -340,12 +363,13 @@ class UpdateCogsInPlace {
 							throw new Error("@cogs_ref must be inside system or function prompt")
 						} else if (groups[idx] == "@cogs_endfunc") {
 							if (this.func_prompt != "") {
-								await this.writeOldFunc(false)
+								await this.writeOldFunc(action,false)
 							} else {
 								throw new Error("@cogs_endfunc without function prompt")
 							}
-						} else { 
+						} else {
 							// bare text -> ignore
+							this.cleaned += groups[idx]
 						}
 					} else if (mode == "system") {
 						if (groups[idx] == "@cogs_system_prompt") {
@@ -359,6 +383,7 @@ class UpdateCogsInPlace {
 							// normalise whitespace
 							filePrompt = filePrompt.replaceAll("\r\n","\n")
 							this.system_prompt += filePrompt;
+							this.cleaned += filePrompt;
 							idx += 1
 						} else if (groups[idx] == "@cogs_ref") {
 							throw new Error("@cogs_ref not allowed in system prompt")
@@ -366,6 +391,7 @@ class UpdateCogsInPlace {
 							throw new Error("@cogs_endfunc not allowed in system prompt")
 						} else { // bare text
 							this.system_prompt += groups[idx]
+							this.cleaned += groups[idx]
 						}
 					} else if (mode == "func") {
 						if (groups[idx] == "@cogs_system_prompt") {
@@ -377,6 +403,7 @@ class UpdateCogsInPlace {
 							var filePromptPath = path.join(this.basePath, groups[idx+1]);
 							var filePrompt = fs.readFileSync(filePromptPath, 'utf-8');
 							this.func_prompt += filePrompt;
+							this.cleaned += filePrompt;
 							idx += 1
 						} else if (groups[idx] == "@cogs_ref") {
 							var refFunc = groups[idx+1]
@@ -386,11 +413,13 @@ class UpdateCogsInPlace {
 							//throw new Error(`Including reference ${refFunc} => ${this.funcSpecs[refFunc]}`)
 							// add function spec to prompt
 							this.func_prompt += this.funcSpecs[refFunc];
+							this.cleaned += this.funcSpecs[refFunc];
 							idx += 1
 						} else if (groups[idx] == "@cogs_endfunc") {
 							throw new Error("@cogs_endfunc not allowed inside function prompt")
 						} else { // bare text
 							this.func_prompt += groups[idx]
+							this.cleaned += groups[idx]
 						}
 					}
 					idx += 1
@@ -406,6 +435,7 @@ class UpdateCogsInPlace {
 					console.log(">> Regular comment section -> copy verbatim")
 					this.newFileContent += section
 				}
+				this.cleaned += "*/"
 			} else {
 				//console.log("Code section")
 				//console.log(section)
@@ -419,10 +449,11 @@ class UpdateCogsInPlace {
 					console.log(">> Old code section kept.")
 					this.newFileContent += section
 				}
+				this.cleaned += section
 			}
 		}
-		await this.writeOldFunc(true)
-		return {text: this.newFileContent, diffs: this.fileDiffs,prompts:this.submittedPrompts}
+		await this.writeOldFunc(action,true)
+		return {text: this.newFileContent, diffs: this.fileDiffs, prompts:this.submittedPrompts, assess:this.assessments, cleanedFile:this.cleaned}
 	}
 }
 

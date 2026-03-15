@@ -64,7 +64,7 @@ class CodelensProvider {
 										const range = new vscode.Range(l, 0, l, lines[l].length);
 										codeLenses.push(
 											new vscode.CodeLens(range, {
-												title: `Rebuild "${target.name}"`,
+												title: `(Re)build "${target.name}"`,
 												tooltip: 'Click to run this function',
 												command: 'webcogs.codelensBuildAction',
 												arguments: [target.name, "build"]   // passed to the command
@@ -99,12 +99,27 @@ class CodelensProvider {
 					if (funcName && (charnr == 0 || linenr == document.lineCount-1)) {
 						//console.log("Emitting code lens for "+funcName)
 						const range = new vscode.Range(linenr, 0, linenr, document.lineAt(linenr).text.length);
-
 						codeLenses.push(
 							new vscode.CodeLens(range, {
-								title: `Rebuild "${funcName}()"`,
+								title: `(Re)build "${funcName}()"`,
 								tooltip: 'Click to run this function',
-								command: 'webcogs.codelensAction',
+								command: 'webcogs.codelensBuildFuncAction',
+								arguments: [funcName]   // passed to the command
+							})
+						)
+						codeLenses.push(
+							new vscode.CodeLens(range, {
+								title: `Assess "${funcName}"`,
+								tooltip: 'Click to assess this function specification',
+								command: 'webcogs.codelensAssessFuncAction',
+								arguments: [funcName]   // passed to the command
+							})
+						)
+						codeLenses.push(
+							new vscode.CodeLens(range, {
+								title: `Show prompt`,
+								tooltip: 'Click to show the function specification used in the prompt',
+								command: 'webcogs.codelensShowFuncAction',
 								arguments: [funcName]   // passed to the command
 							})
 						)
@@ -139,7 +154,7 @@ class CodelensProvider {
 				}
 			}*/
 		} catch (error) {
-			console.log(error)
+			vscode.window.showErrorMessage(`${error}`);
 		}
 		return codeLenses;
 	}
@@ -236,6 +251,52 @@ function getInsertRange(document,funcName) {
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 
+
+
+
+class CommentItem extends vscode.TreeItem {
+  /**
+   * @param {string} label
+   */
+  constructor(label) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.contextValue = "simpleItem";
+    this.tooltip = label;
+    // Optional: clicking the item shows info
+    //this.command = {
+    //  command: "myext.onItemClick",
+    //  title: "Item Click",
+    //  arguments: [label]
+    //};
+  }
+}
+
+
+class CommentListProvider /* implements vscode.TreeDataProvider*/ {
+	items
+	/** @param items array of strings */
+	constructor(items) {
+		this.items = items
+	}
+
+	/**
+	 * @param {SimpleItem} element
+	 */
+	getTreeItem(element) {
+		return element;
+	}
+
+	/**
+	 * @param {SimpleItem | undefined} element
+	 */
+	getChildren(element) {
+		if (element) {
+			return [];
+		}
+		return this.items.map((t) => new CommentItem(t));
+	}
+}
+
 /**
  * @param {vscode.ExtensionContext} context
  */
@@ -256,6 +317,10 @@ function activate(context) {
 	const codelensProvider = new CodelensProvider();
 
 	vscode.languages.registerCodeLensProvider("*", codelensProvider);
+
+	//vscode.window.registerTreeDataProvider('webcogsSimpleListView', new CommentListProvider(["Select 'Assess' to generate assessment"]))
+
+
 
 	// The commands have been defined in the package.json file
 	// Now provide the implementation with registerCommand
@@ -283,18 +348,47 @@ function activate(context) {
 		buildcog.runCommand().then( (err) => {
 			vscode.window.showInformationMessage(`Finished building ${targetName}.`);			
 		}).catch( (err) => {
-			vscode.window.showInformationMessage(`${err}`);
+			vscode.window.showErrorMessage(`${err}`);
 		})
 	})
 
-	vscode.commands.registerCommand("webcogs.codelensAction", (funcName) => {
+
+	vscode.commands.registerCommand("webcogs.codelensAssessFuncAction", (funcName) => {
+		vscode.window.showInformationMessage(`Assessing ${funcName}...`);
+		const editor = vscode.window.activeTextEditor
+		const document = editor.document
+		const fileName = document.fileName
+		var basePath = path.dirname(fileName)
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.4")
+		parser.parseFile("assess").then( (update) => {
+			for (var i=0; i<update.assess.length; i++) {
+				vscode.window.registerTreeDataProvider('webcogsSimpleListView', new CommentListProvider(update.assess[i]))
+				vscode.window.showInformationMessage(`Finished assessment of ${funcName}, check the activity bar.`);
+			}
+		})
+	})
+
+	vscode.commands.registerCommand("webcogs.codelensShowFuncAction", (funcName) => {
+		const editor = vscode.window.activeTextEditor
+		const document = editor.document
+		const fileName = document.fileName
+		var basePath = path.dirname(fileName)
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.4")
+		parser.parseFile("none").then( (update) => {
+			for (var i=0; i<update.prompts.length; i++) {
+				vscode.window.showInformationMessage("Prompt",{detail:`${update.prompts[i]}`,modal: true});
+			}
+		})
+	})
+
+	vscode.commands.registerCommand("webcogs.codelensBuildFuncAction", (funcName) => {
 		vscode.window.showInformationMessage(`Building ${funcName}...`);
 		const editor = vscode.window.activeTextEditor
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.2")
-		parser.parseFile().then( (update) => {
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.4")
+		parser.parseFile("build").then( (update) => {
 			// show prompts (debug feature)
 			//for (var i=0; i<update.prompts.length; i++) {
 			//	vscode.window.showInformationMessage("Prompt",{detail:`${update.prompts[i]}`,modal: true});
@@ -312,11 +406,16 @@ function activate(context) {
 						vscode.window.showInformationMessage(`Finished building ${funcName}.`);
 					});
 				} else {
-					console.log(`Function ${funcName} not found.`)
+					vscode.window.showErrorMessage(`Function ${funcName} not found.`);
 				}
 			}
+			for (var i=0; i<update.assess.length; i++) {
+				vscode.window.registerTreeDataProvider('webcogsSimpleListView', new CommentListProvider(update.assess[i]))
+				vscode.window.showWarningMessage(`Issues found with specification of ${funcName}, check the activity bar.`);
+				vscode.commands.executeCommand('workbench.view.extension.webcogsSimpleListView')
+			}
 		}).catch( (err) => {
-			vscode.window.showInformationMessage(`${err}`);
+			vscode.window.showErrorMessage(`${err}`);
 		})
 
 		/*console.log(args)

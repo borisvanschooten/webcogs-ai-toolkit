@@ -7,7 +7,7 @@
   "keywords": ["prompts as code", "context engineering", "code generation", "LLM" ],
   "icon": "head-with-cog-crop-right-128x128.png",
   "repository": "https://github.com/borisvanschooten/webcogs-ai-toolkit",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "license": "MIT",
   "engines": {
     "vscode": "^1.102.0"
@@ -39,13 +39,37 @@
           "default": true
         }
       }
-    }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "webcogsContainer",
+          "title": "Webcogs",
+          "icon": "head-with-cog-crop-right-24x24.png"
+        }
+      ]
+    },
+    "views": {
+      "webcogsContainer": [
+        {
+          "id": "webcogsSimpleListView",
+          "name": "Specification Assessment",
+          "icon": "head-with-cog-crop-right-128x128.png"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "webcogsSimpleListView",
+       "contents": "Assessment of your specifications is shown here when buiding or assessing @cogs_func functions."
+      }
+    ]
   },
   "scripts": {
     "lint": "eslint .",
     "pretest": "npm run lint",
     "test": "vscode-test",
-    "install-local-webcogs": "cd ../.. && npm run pack && cd vscode-extension/webcogs/ && npm install ../../webcogs-0.5.0.tgz --no-save",
+    "install-local-webcogs": "cd ../.. && npm run pack && cd vscode-extension/webcogs/ && npm install ../../webcogs-0.6.0.tgz --no-save",
     "package": "vsce package"
   },
   "devDependencies": {
