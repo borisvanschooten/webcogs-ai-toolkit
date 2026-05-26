@@ -154,6 +154,8 @@ class CodelensProvider {
 				}
 			}*/
 		} catch (error) {
+			console.error(error)
+			console.error(error.stack)
 			vscode.window.showErrorMessage(`${error}`);
 		}
 		return codeLenses;
@@ -199,6 +201,7 @@ function getInsertRange(document,funcName) {
 	var endline=null
 	var foundFuncName = null;
 	var lines = []
+	var firstLineAfterFound=false
 	var rangeFound = null
 	for (let line = 0; line < document.lineCount; line++) {
 		lines.push(document.lineAt(line).text)
@@ -219,6 +222,7 @@ function getInsertRange(document,funcName) {
 					if (foundFuncName == funcName) {
 						// setting startline triggers searching for end
 						startline = linenr
+						firstLineAfterFound=true
 					}
 				}
 			}
@@ -229,6 +233,10 @@ function getInsertRange(document,funcName) {
 				if (token.indexOf("@cogs_endfunc") !== -1
 				||  token.indexOf("@cogs_func") !== -1
 				||  token.indexOf("@cogs_system_prompt") !== -1) {
+					if (firstLineAfterFound) {
+						endline = startline
+					}
+					console.log(`startLine${startline} endline ${endline}`)
 					rangeFound = new vscode.Range(startline, 0, endline, 0) //document.lineAt(endline).text.length)
 				}
 			} else {
@@ -241,6 +249,7 @@ function getInsertRange(document,funcName) {
 					endline = null
 				}
 			}
+			firstLineAfterFound=false
 		}
 	})
 	if (rangeFound) return rangeFound;
@@ -348,6 +357,8 @@ function activate(context) {
 		buildcog.runCommand().then( (err) => {
 			vscode.window.showInformationMessage(`Finished building ${targetName}.`);			
 		}).catch( (err) => {
+			console.error(err)
+			console.error(err.stack)
 			vscode.window.showErrorMessage(`${err}`);
 		})
 	})
@@ -359,7 +370,7 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.4")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.5")
 		parser.parseFile("assess").then( (update) => {
 			for (var i=0; i<update.assess.length; i++) {
 				vscode.window.registerTreeDataProvider('webcogsSimpleListView', new CommentListProvider(update.assess[i]))
@@ -373,7 +384,7 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.4")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.5")
 		parser.parseFile("none").then( (update) => {
 			for (var i=0; i<update.prompts.length; i++) {
 				vscode.window.showInformationMessage("Prompt",{detail:`${update.prompts[i]}`,modal: true});
@@ -387,7 +398,7 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.4")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.5")
 		parser.parseFile("build").then( (update) => {
 			// show prompts (debug feature)
 			//for (var i=0; i<update.prompts.length; i++) {
@@ -415,6 +426,8 @@ function activate(context) {
 				vscode.commands.executeCommand('workbench.view.extension.webcogsSimpleListView')
 			}
 		}).catch( (err) => {
+			console.error(err)
+			console.error(err.stack)
 			vscode.window.showErrorMessage(`${err}`);
 		})
 

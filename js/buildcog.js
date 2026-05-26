@@ -20,7 +20,7 @@ class BuildCogTools {
 		this.targetIndex = targetIndex
 	}
 
-	create_class(args/*,targetBaseDir,manifest,getPromptSpec*/) {
+	create_class_or_function(args/*,targetBaseDir,manifest,getPromptSpec*/) {
 		const target = path.resolve(this.buildCog.targetBaseDir, this.buildCog.manifest.targets[this.targetIndex].file)
 		var code = this.buildCog.getPromptSpec(this.targetIndex) + args.source_code
 		// Ensure the directory exists
@@ -34,14 +34,14 @@ class BuildCog {
 		{
 			"type": "function",
 			"function": {
-				"name": "create_class",
-				"description": "Create a class. It should be specified in full, do not omit any code.",
+				"name": "create_class_or_function",
+				"description": "Always call this tool if you create code for a class or function. It should be specified in full, do not omit any code.",
 				"parameters": {
 					"type": "object",
 					"properties": {
 						"source_code": {
 							"type": "string",
-							"description": "The source code of the class",
+							"description": "The source code of the class or function",
 						},
 					},
 					"required": [
@@ -167,7 +167,7 @@ class BuildCog {
 	}
 
 	getModel() {
-		return this.manifest.model ? this.manifest.model : "gpt-5.4"
+		return this.manifest.ai_model ? this.manifest.ai_model : "gpt-5.5"
 	}
 
 	remove_build_timestamp(prompt) {
@@ -192,14 +192,15 @@ class BuildCog {
 		var messages = [
 			{
 				"role": "developer",
-				"content": this.prompts.system_prompt,
+				"content": "You are asked to write code. Always call the tool create_class_or_function to pass the code. Do not also produce the code as text. "+this.prompts.system_prompt,
 			},{
 				"role": "user",
 				"content": this.prompts.user_prompts[i].text+" Do not explain what you have done.",
 			}
 		]
 		var output = await callLLM.callLLM(this.client,messages,this.tools,"aifn_",ai_functions,this.getModel(),2,null,2000)
-		//console.log(output)
+		console.log("Discarded text output:")
+		console.log(output)
 		//console.log(messages)
 	}
 

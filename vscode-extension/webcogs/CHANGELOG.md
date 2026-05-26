@@ -35,3 +35,10 @@ Documentation improvements
 - assessment is now shown in separate activity bar view
 - more error messages are shown
 - bumped GPT version to 5.4
+
+## 0.7.0
+
+- minor system prompt improvements
+- bumped GPT version to 5.5
+- bugfixes: AI model was not taken from prompt buildfile ai_model field; parser did not handle cogs_endfunc comment directly after cogs_func comment
+- Bumped GPT version to 5.5

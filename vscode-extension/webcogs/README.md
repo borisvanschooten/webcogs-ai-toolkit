@@ -20,7 +20,7 @@ The main idea behind Webcogs is that it allows you to use the **LLM as a compile
 
 You have to activate the codelenses from the command palette. Type Shift-Ctrl-P, then select *"Webcogs: Enable Webcogs Codelens"*. You should get "(Re)build buttons in the prompt buildfiles below each target, and (re)build, assess, and show prompt buttons below each **@cogs_func** block in your code. Also an activity bar view is added where code assessments are shown.  These are created uding the "assess" button or when the AI thinks your specification is not precise enough.
 
-You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises for the first time.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. The tool now uses the new GPT-5.4 model by default. Cost (about $0.01-$0.02 to generate a function, $0.02-$0.04 to generate a class).
+You need to have an **OpenAI API key**, which you are prompted to fill in when the plugin initialises for the first time.  If you have to re-enter it, use the command *"Webcogs: Re-enter Webcogs OpenAI API Key"*. The tool now uses the new GPT-5.5 model by default. Cost (about $0.01-$0.02 to generate a function, $0.02-$0.04 to generate a class).
 
 
 ### Building files via a buildfile
@@ -34,7 +34,7 @@ For building separate files, you can use a promptbuildfile which is a JSON file 
 	"description": "Simple demo app for demonstrating WebCogs plugins",
 	"version": "0.1",
 	"ai_vendor": "openai",
-	"ai_model": "gpt-5.4",
+	"ai_model": "gpt-5.5",
 	"system_prompts": [
 		{ "file": "../../js/webcogs_core_docs.md" },
 		{ "file": "app_docs.md" },
