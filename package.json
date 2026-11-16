@@ -6,7 +6,8 @@
     "updatecogsinplace": "./clitools/update_functions_inplace.js",
     "expandcogs": "./clitools/expand_cogs.js",
     "cogstranslate": "./clitools/translate.js",
-    "callllm": "./clitools/callllm.js"
+    "callllm": "./clitools/callllm.js",
+    "cogsagent": "./clitools/agent/agent.js"
   },
   "exports": {
     ".": "./js/index.js"
@@ -21,7 +22,10 @@
     "jsonwebtoken": "^9.0.2",
     "openai": "^5.1.1",
     "pofile": "^1.1.4",
-    "sql.js": "^1.13.0"
+    "sql.js": "^1.13.0",
+    "dotenv": "^16.4.7",
+    "marked": "^18.2.0",
+    "marked-terminal": "^7.3.1"
   },
   "scripts": {
     "pack": "npm pack",

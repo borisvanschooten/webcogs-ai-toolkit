@@ -439,8 +439,8 @@
 		var description = args.description
 		var controlpanel = args.controlpanel || null;
 
-        var arguments = typeof args.arguments === "string" ? JSON.parse(args.arguments.replace("\\n","\n")) : args.arguments
-        var argumentKeys = Object.keys(arguments);
+        var Arguments = typeof args.arguments === "string" ? JSON.parse(args.arguments.replace("\\n","\n")) : args.arguments
+        var argumentKeys = Object.keys(Arguments);
 
 		var funcstr = `var inner_f = ${code}; var ret = await inner_f(args); return ret;`
 		var controlfuncstr = controlpanel ? `var inner_f = ${controlpanel}; var ret = await inner_f(); return ret;` : null
@@ -450,7 +450,7 @@
 			"description": description,
 			"parameters": {
 				"type": "object",
-				"properties": arguments,
+				"properties": Arguments,
 				"required": argumentKeys,
 				"additionalProperties": false
 			},
