@@ -219,8 +219,8 @@
 		var toolsInfo = generated_tools.map(function(tool) {
 			return {
 				tool: tool,
-				function_src: generated_functions_src[tool.function.name],
-				controlpanel_src: generated_functions_src[tool.function.name+".controlpanel"],
+				function_src: generated_functions_src[tool.name],
+				controlpanel_src: generated_functions_src[tool.name+".controlpanel"],
 			};
 		});
 		console.log(toolsInfo)
@@ -233,16 +233,27 @@
 		var toolsInfo = JSON.parse(localStorage.getItem('webcogs_chat_generated_tools'))
 		if (toolsInfo) {
 			toolsInfo.forEach(function(toolObj) {
+				if (toolObj.tool.function) {
+					convertToolToResponsesStyle(toolObj.tool)
+				}
 				generated_tools.push(toolObj.tool);
-				addGeneratedFunction(toolObj.tool.function.name, toolObj.function_src)
-				addGeneratedFunction(toolObj.tool.function.name+".controlpanel", toolObj.controlpanel_src)
+				addGeneratedFunction(toolObj.tool.name, toolObj.function_src)
+				addGeneratedFunction(toolObj.tool.name+".controlpanel", toolObj.controlpanel_src)
 			});
 			await populateToolBar();
 		}
 		credentials = JSON.parse(localStorage.getItem('webcogs_chat_credentials'))
 		if (!credentials) credentials = {}
 	}
-	
+	function convertToolToResponsesStyle(tool) {
+		// responses style -> convert
+		tool.name = tool.function.name
+		tool.name = tool.function.name
+		tool.description = tool.function.description
+		tool.parameters = tool.function.parameters
+		tool.strict = true
+	}
+
 	function addGeneratedFunction(name,src) {
 		generated_functions_src[name] = src;
 		const f = new AsyncFunction("args", src);
@@ -253,86 +264,80 @@
 	const tools = [
 	{
 		"type": "function",
-		"function": {
-			"name": "create_app",
-			"description": "Create a HTML / Javascript app that is shown to the user. It should be specified as a full, standalone HTML page, including any CSS styling where necessary.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"name": {
-						"type": "string",
-						"description": "a name that describes the app, written in camel caps",
-					},
-					"code": {
-						"type": "string",
-						"description": "the full HTML code of the web app, including CSS and Javascript as needed"
-					},
+		"name": "create_app",
+		"description": "Create a HTML / Javascript app that is shown to the user. It should be specified as a full, standalone HTML page, including any CSS styling where necessary.",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "a name that describes the app, written in camel caps",
 				},
-				"required": [
-					"name", "code"
-				],
-				"additionalProperties": false
+				"code": {
+					"type": "string",
+					"description": "the full HTML code of the web app, including CSS and Javascript as needed"
+				},
 			},
-			"strict": true
-		}
+			"required": [
+				"name", "code"
+			],
+			"additionalProperties": false
+		},
+		"strict": true
 	},
 	{
 		"type": "function",
-		"function": {
-			"name": "create_tool",
-			"description": "Create a tool which can be used later. The tool has access to the internet. It must be written in plain Javascript as a single function expression with one parameter 'args'. Tools can be used to perform actions and retrieve information, but can show information to the user via the function showToUser(html_code). This creates an iframe that shows the given HTML page to the user. A tool can also have a permanent user visible control panel, which can be defined using a separate function expression that returns a DIV which contains the control panel. Only create a control panel when the user asks for it.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"name": {
-						"type": "string",
-						"description": "The name of the tool."
-					},
-					"description": {
-						"type": "string",
-						"description": "Describes what the function does and what it returns."
-					},
-					"arguments": {
-						"type": "string",
-						"description": "A JSON string representing set of name-value pairs. Name is the name of the argument. Value is an object with two fields: {type,description}."
-					},
-					"code": {
-						"type": "string",
-						"description": "The Javascript function expression with one parameter 'args', which contains the function arguments as name-value pairs."
-					},
-					"controlpanel": {
-						"type": "string",
-						"description": "A function expression that returns a DIV that can be shown as a control panel. Pass null if there is no control panel."
-					},
+		"name": "create_tool",
+		"description": "Create a tool which can be used later. The tool has access to the internet. It must be written in plain Javascript as a single function expression with one parameter 'args'. Tools can be used to perform actions and retrieve information, but can show information to the user via the function showToUser(html_code). This creates an iframe that shows the given HTML page to the user. A tool can also have a permanent user visible control panel, which can be defined using a separate function expression that returns a DIV which contains the control panel. Only create a control panel when the user asks for it.",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"name": {
+					"type": "string",
+					"description": "The name of the tool."
 				},
-				"required": [
-					"name", "description", "arguments", "code", "controlpanel"
-				],
-				"additionalProperties": false
+				"description": {
+					"type": "string",
+					"description": "Describes what the function does and what it returns."
+				},
+				"arguments": {
+					"type": "string",
+					"description": "A JSON string representing set of name-value pairs. Name is the name of the argument. Value is an object with two fields: {type,description}."
+				},
+				"code": {
+					"type": "string",
+					"description": "The Javascript function expression with one parameter 'args', which contains the function arguments as name-value pairs."
+				},
+				"controlpanel": {
+					"type": "string",
+					"description": "A function expression that returns a DIV that can be shown as a control panel. Pass null if there is no control panel."
+				},
 			},
-			"strict": true
-		}
+			"required": [
+				"name", "description", "arguments", "code", "controlpanel"
+			],
+			"additionalProperties": false,
+		},
+		"strict": true
 	},
 	{
 		"type": "function",
-		"function": {
-			"name": "run_code",
-			"description": "Run Javascript code and return the result.  The code should not be wrapped in a function. Code is executed with eval, and will return the value of a bare expression. It is not possible to use import or HTML. The code has no access to functions or variables from previous calls to the run_code tool.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"code": {
-						"type": "string",
-						"description": "A Javascript code block"
-					},
+		"name": "run_code",
+		"description": "Run Javascript code and return the result.  The code should not be wrapped in a function. Code is executed with eval, and will return the value of a bare expression. It is not possible to use import or HTML. The code has no access to functions or variables from previous calls to the run_code tool.",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"code": {
+					"type": "string",
+					"description": "A Javascript code block"
 				},
-				"required": [
-					"code"
-				],
-				"additionalProperties": false
 			},
-			"strict": true
-		}
+			"required": [
+				"code"
+			],
+			"additionalProperties": false
+		},
+		"strict": true
 	},
 	];
 	var generated_tools = []
@@ -347,9 +352,9 @@
 
 	function addToolToLibrary(toolspec,code,controlpanel) {
 		// can throw exception if the code does not compile. Then, no tool is defined.
-		addGeneratedFunction(toolspec.function.name, code)
+		addGeneratedFunction(toolspec.name, code)
 		if (controlpanel) {
-			addGeneratedFunction(toolspec.function.name+".controlpanel", controlpanel)
+			addGeneratedFunction(toolspec.name+".controlpanel", controlpanel)
 		}
 		generated_tools.push(toolspec)
 		populateToolBar()
@@ -357,11 +362,11 @@
 	}
 	function deleteTool(name) {
 		generated_tools = generated_tools.filter(function(tool) {
-			if (tool.function.name !== name) return true;
-			delete generated_functions_src[tool.function.name];
-			delete generated_functions[tool.function.name];
-			delete generated_functions_src[tool.function.name+".controlpanel"];
-			delete generated_functions[tool.function.name+".controlpanel"];
+			if (tool.name !== name) return true;
+			delete generated_functions_src[tool.name];
+			delete generated_functions[tool.name];
+			delete generated_functions_src[tool.name+".controlpanel"];
+			delete generated_functions[tool.name+".controlpanel"];
 			return false;
 		});
 		populateToolBar();
@@ -374,7 +379,7 @@
      * @returns {object|null} - Returns the tool object if found, otherwise null.
      */
     function findTool(functionName) {
-        return generated_tools.find(tool => tool.function.name === functionName) || null;
+        return generated_tools.find(tool => tool.name === functionName) || null;
     }
 
 	/**
@@ -441,17 +446,15 @@
 		var controlfuncstr = controlpanel ? `var inner_f = ${controlpanel}; var ret = await inner_f(); return ret;` : null
 		var tool = {
 			"type": "function",
-			"function": {
-				"name": name,
-				"description": description,
-				"parameters": {
-					"type": "object",
-					"properties": arguments,
-					"required": argumentKeys,
-					"additionalProperties": false
-				},
-				"strict": true,
+			"name": name,
+			"description": description,
+			"parameters": {
+				"type": "object",
+				"properties": arguments,
+				"required": argumentKeys,
+				"additionalProperties": false
 			},
+			"strict": true,
 		}
 		console.log(tool)
 		addToolToLibrary(tool,funcstr,controlfuncstr)
@@ -537,8 +540,11 @@
 	function importToolFromFile() {
 		uploadFile(function(json) {
 			var obj = JSON.parse(json)
-			if (findTool(obj.tool.function.name)) {
-				alert(`A tool named '${obj.tool.function.name}' already exists.`)
+			if (obj.tool && obj.tool.function) {
+				convertToolToResponsesStyle(obj.tool)
+			}
+			if (findTool(obj.tool.name)) {
+				alert(`A tool named '${obj.tool.name}' already exists.`)
 			} else {
 				addToolToLibrary(obj.tool,obj.function_src,obj.controlpanel_src)
 			}
@@ -617,7 +623,7 @@
         elem.innerHTML = ''; // Clear existing content
         tools.forEach(tool => {
 			var toolEnabled = enabled
-			if (typeof disabled_tools[tool.function.name] == "undefined") {
+			if (typeof disabled_tools[tool.name] == "undefined") {
 				toolEnabled = true
 			}
             const toolDiv = document.createElement('div');
@@ -630,7 +636,7 @@
 			if (toolEnabled) checkbox.checked = true;
 			checkbox.addEventListener('change', (function(name) {return function() {
 				setToolEnabled(name,event.target.checked);   // true if checked, false if unchecked
-			}})(tool.function.name));
+			}})(tool.name));
 			toolDiv.appendChild(checkbox);
 
 			if (deletable) {
@@ -643,37 +649,37 @@
 						if (confirm("Delete tool "+name+"?")) {
 							deleteTool(name)
 						}
-					}})(tool.function.name) },
+					}})(tool.name) },
 					{text:"⎘ Export", callback: (function(name) {return function() {
 						downloadText(JSON.stringify({
 							tool: findTool(name),
 							function_src: generated_functions_src[name],
 							controlpanel_src: generated_functions_src[name+".controlpanel"],
 						},null,4), "WebCogsTool_"+name+".json")
-					}})(tool.function.name) },
+					}})(tool.name) },
 					{text:"⭳ Download Code", callback: (function(name) {return function() {
 						downloadText(generated_functions_src[name], "WebCogsTool_"+name+"_src.js")
-					}})(tool.function.name) },
+					}})(tool.name) },
 					{text:"⭱ Replace Code", callback: (function(name) {return function() {
 						uploadFile(function(src) {
 							addGeneratedFunction(name, src)
 							saveToLocalStorage()
 						})
-					}})(tool.function.name) },
+					}})(tool.name) },
 					{text:"⭳ Download Control Panel", callback: (function(name) {return function() {
 						downloadText(generated_functions_src[name+".controlpanel"], "WebCogsTool_"+name+"_controlpanel_src.js")
-					}})(tool.function.name) },
+					}})(tool.name) },
 					{text:"⭱ Replace Control Panel", callback: (function(name) {return function() {
 						uploadFile(function(src) {
 							addGeneratedFunction(name+".controlpanel", src)
 							saveToLocalStorage()
 						})
-					}})(tool.function.name) },
+					}})(tool.name) },
 				])
 			}
 
 			toolName = document.createElement('span')
-            toolName.textContent = tool.function.name;
+            toolName.textContent = tool.name;
 			toolDiv.appendChild(toolName)
 
 
@@ -691,9 +697,9 @@
 		parent.innerHTML = ""
 		for (var i=0; i<generated_tools.length; i++) {
 			tool = generated_tools[i]
-			if (generated_functions_src[tool.function.name+".controlpanel"]) {
+			if (generated_functions_src[tool.name+".controlpanel"]) {
 				const parent = document.getElementById("ai_control_panels")
-				const controlPanelDiv = await generated_functions[tool.function.name+".controlpanel"]()
+				const controlPanelDiv = await generated_functions[tool.name+".controlpanel"]()
 				//console.log(controlPanelDiv)
 				parent.appendChild(controlPanelDiv)
 			}
@@ -747,13 +753,14 @@
 
 initialMessages = [
 	{
+		type: "message",
 		role: "developer",
 		content: "Always answer the user in Markdown format. Especially section headers should be done markdown style. in if you are asked to create an app or game, create it using HTML and Javascript, and use the create_app tool. Use a light grey background for the app unless otherwise specified. Do not use space or enter as keyboard controls, and ensure there is a way to restart the app. Do not omit any code, write everything out in full. Call any javascript functions immediately, do not rely on domContentReloaded to trigger function calls. If you are asked to do anything that requires internet access and/or that could be done in Javascript code, create a tool by supplying a name, documentation, and the full Javascript code, and call the tool once it is created. The code of a tool should be a function with a single argument 'args'. args is a set of name-value pairs that represents arguments passed by name. Again, do not omit any code, write everything out in full. If an API call requires an API key or other credentials, do not add the credentials as function parameters, but always call the function getCredentials(service) to get it. The service parameter is a text description of the service. getCredentials can only store literal strings. If multiple credential values are required (for example ID and key), use two separate getCredentials calls.  The require function is not available. Calls to google custom search API must include key and cx parameters.  If you are asked to process or compute something or solve a problem that's best solved in code, use the run_code tool."
 	},
 
 ]
 
-messages = JSON.parse(JSON.stringify(initialMessages))
+conversation = JSON.parse(JSON.stringify(initialMessages))
 
 async function submitMessage() {
     const responseElement = document.getElementById('response');
@@ -768,13 +775,14 @@ async function submitMessage() {
 	spinnerDiv.className = "spinner";
 	responseElement.appendChild(spinnerDiv);
 
-	messages.push({
+	conversation.push({
+		type: "message",
 		role: "user",
 		content: message,
 	})
 	console.log("Provided Tools:")
 	console.log(tools)
-    const response = await callLLM(client,messages,tools,"aifn_",generated_functions,"gpt-5.5")
+    const response = await callLLMResponses(client,conversation,tools,"aifn_",generated_functions,"gpt-6.1-sol")
 	const responseDiv = document.createElement('div')
 	responseDiv.className = "answer"
 

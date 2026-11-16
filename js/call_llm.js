@@ -103,6 +103,126 @@ async function callLLM(client,messages,tools,aifnPrefix,available_functions,mode
 	return outputString;
 }
 
+
+// version that uses the responses API
+async function callLLMResponses(client,conversation,tools,aifnPrefix,available_functions,modelName="gpt-5.5",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
+	var outputString = ""
+	while (nrTries >= 0) {
+		nrTries--
+		var alltools = tools
+		if (typeof generated_tools != "undefined") {
+			alltools = tools.concat(generated_tools)
+		}
+		var enabledtools = alltools
+		if (typeof disabled_tools != "undefined") {
+			enabledtools = alltools.filter(
+				(tool) => !Object.prototype.hasOwnProperty.call(disabled_tools, tool.name)
+			);
+		}
+		console.log(enabledtools)
+		//console.log(conversation)
+		const response = await client.responses.create({
+			model: modelName,
+			tools: enabledtools,
+			input: conversation,
+			/* disabled for now*/  /*tool_choice,*/
+		});
+		console.log(response)
+		conversation.push(...response.output)
+		for (const out of response.output) {
+			if (out.type == "message") {
+				for (const con of out.content) {
+					if (con.type == "output_text") {
+						outputString += con.text
+					}
+				}
+				// output message ends turn?
+				return outputString
+			} else if (out.type == "function_call") {
+				tool_call = out
+				let fn = tool_call.name;
+				let args = JSON.parse(tool_call.arguments)
+				let unpackedArgs = {};
+
+				for (let [key, value] of Object.entries(args)) {
+					try {
+						unpackedArgs[key] = JSON.parse(value)
+					} catch (e) {
+						if (e instanceof SyntaxError || e instanceof TypeError) {
+							unpackedArgs[key] = value;
+						}
+					}
+				}
+				// XXX suppress when in cli mode, should be an option
+				if (showToolCallsElem) {
+					console.log("Calling tool: " + fn, "args:" + JSON.stringify(unpackedArgs))
+				}
+				let funcCalled = false
+				var errorMessage = null
+				var result = null
+				try {
+					if (typeof window != "undefined" && window[aifnPrefix+fn]) {
+						result = await window[aifnPrefix+fn](unpackedArgs)
+						funcCalled = true;
+					} else if (available_functions[fn]) {
+						result = await available_functions[fn](unpackedArgs)
+						funcCalled = true;
+					} else {
+						errorMessage = `Failure: Function ${fn} does not exist.`
+					}
+				} catch (error) {
+					errorMessage = "Failure: An error occurred: " + error
+				}
+				if (errorMessage) {
+					console.log(errorMessage)
+				}
+				if (funcCalled) {
+					if (showToolCallsElem) {
+						const responseElement = document.getElementById(showToolCallsElem)
+						const toolDiv = document.createElement('div')
+						toolDiv.className = "call_tool"
+						var params = JSON.stringify(unpackedArgs)
+						if (params.length > 100) {
+							params = params.substring(0, 100)+" ...[truncated]"
+						}
+						toolDiv.innerText = `Tool ${fn} called with parameters ${params}`
+						responseElement.appendChild(toolDiv)
+					}
+					if (!result) result = "Success"
+					if (typeof result != "string") result = JSON.stringify(result)
+					if (result.length > truncateResult) {
+						result = result.substring(0, truncateResult) + "...(truncated)";
+					}
+					
+					conversation.push({
+						type: "function_call_output",
+						call_id: tool_call.call_id,
+						output: JSON.stringify(result)
+					});
+					/*messages.push({
+						"content": result,
+						"role": "tool",
+						"tool_call_id": tool_call.id
+					})*/
+				} else {
+					conversation.push({
+						type: "function_call_output",
+						call_id: tool_call.call_id,
+						output: errorMessage,
+					});
+					/*messages.push({
+						"content": errorMessage,
+						"role": "tool",
+						"tool_call_id": tool_call.id
+					})*/
+				}
+			}
+		}
+	}
+	return outputString;
+}
+
+
 if (typeof module == "object") {
-	module.exports = {callLLM}
+	module.exports = {callLLM,callLLMResponses}
 }

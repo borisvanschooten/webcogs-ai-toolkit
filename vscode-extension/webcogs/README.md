@@ -139,9 +139,15 @@ This extension contributes the following settings:
 
 ## Quirks and Known Issues
 
-I built this extension for my own use, and it's not particularly user friendly yet.  Some errors are reported in the console only, so you have to open the terminal to see them.  Choose Terminal->New Terminal, then select the Output tab, and select Extension Host in the dropdown on the right.
+I built this extension for my own use, and it has a number of quirks that need work.  If something doesn't work, open the terminal to check for errors.  Choose Terminal->New Terminal, then select the Output tab, and select Extension Host in the dropdown on the right.
 
-If you build a function inside a file, it will invoke the LLM in the background, which may take a couple of minutes to complete.  When it's finished, it will re-read the source file, and insert the result at the @cogs_func <name> block it finds at that moment.  So if you remove the block or change the name in the meantime, it will not find the block and will abort.  It will also abort if you switch the editor to another file, so you have to keep the file open while it is processing.
+Known issues:
+
+- If you build a function inside a file, it will invoke the LLM in the background, which may take a couple of minutes to complete.  When it's finished, it will re-read the source file, and insert the result at the @cogs_func <name> block it finds at that moment.  So if you remove the block or change the name in the meantime, it will not find the block and will abort.  It will also abort if you switch the editor to another file, so you have to keep the file open while it is processing.
+
+- There is no checking on duplicate @cogs_func and target names.
+
+- You need to save the promptbuildfile before building a target, otherwise it will use the old file.
 
 ## How to re-build from source
 
