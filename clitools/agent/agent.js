@@ -178,7 +178,7 @@ const tools = [
         type: "function",
         name: "read_file",
         description:
-            "Read a UTF-8 text file inside the workspace. The lines are returned numbered in a fixed-width gutter (\"  42 | line text\") together with a sha256 hash that must be passed as expected_hash to edit_file. Optional line ranges limit the response for large files. Tabs are shown as the two-character sequence \\t. Files matching the denied-file patterns (credentials, private keys, .env files, .git contents, and similar secrets) cannot be read.",
+            "Read a UTF-8 text file inside the workspace. The lines are returned numbered in a fixed-width gauge (\"  42 | line text\") together with a sha256 hash that must be passed as expected_hash to edit_file. Optional line ranges limit the response for large files. Line text is shown verbatim (real tabs, no escaping). Files matching the denied-file patterns (credentials, private keys, .env files, .git contents, and similar secrets) cannot be read.",
         strict: true,
         parameters: {
             type: "object",
@@ -208,7 +208,7 @@ const tools = [
         type: "function",
         name: "edit_file",
         description:
-            "Apply one or more edits to an existing UTF-8 text file, atomically. Each edit either replaces old_text with new_text, where old_text must match the file (after line-ending normalization) at exactly one location, or omits old_text and instead specifies the 1-based start_line and end_line of the line range that new_text replaces. Tabs read from read_file are shown as the two-character sequence \\t: if old_text containing those sequences does not match literally, it is retried with \\t read as real tabs, and a matching fallback interprets \\t in new_text the same way (line-range edits use new_text verbatim, so write real tabs there). line_hint is the 1-based line number where old_text is expected, taken from read_file's numbered output; it disambiguates multiple matches, and if the file has shifted, the surrounding lines are searched. expected_hash must be the sha256 hash from the most recent read_file or edit_file result for this file; if the file changed since it was read, the edit is rejected. All edits are resolved against the same file snapshot and must not overlap; if any edit cannot be applied, nothing is changed and the error reports the actual numbered lines nearby. The user must approve every edit before changes are made.",
+            "Apply one or more edits to an existing UTF-8 text file, atomically. Each edit replaces the inclusive 1-based line range start_line..end_line with new_text; the replaced lines are not reproduced. All start_line and end_line values refer to the file exactly as it was when expected_hash was produced, including for edits later in the same call, which are resolved against the same snapshot. new_text is used verbatim: write real tabs, not escape sequences. read_file returns lines numbered in the same coordinates. expected_hash must be the sha256 hash from the most recent read_file or edit_file result for this file; if the file changed since it was read, the edit is rejected. Each edit may include an optional old_text anchor: the text you expect to find at start_line..end_line in the hash-guarded snapshot. It is compared while ignoring whitespace differences (indentation, tabs vs. spaces, runs of spaces), but it must have exactly as many lines as the range; if it does not match, the whole call is rejected without changes and the error shows the actual lines at the range plus the line numbers where the anchor does occur. Include old_text whenever the exact lines were not just returned by a read_file or edit_file result. Edits must not overlap; if any edit cannot be applied, nothing is changed. An empty new_text deletes the range. The user must approve every edit before changes are made.",
         strict: true,
         parameters: {
             type: "object",
@@ -230,42 +230,30 @@ const tools = [
                     items: {
                         type: "object",
                         properties: {
-                            line_hint: {
-                                type: ["integer", "null"],
-                                minimum: 1,
-                                description:
-                                    "1-based line number of old_text's first line, as shown by read_file's numbered output."
-                            },
-                            old_text: {
-                                type: ["string", "null"],
-                                description:
-                                    "Exact text to replace, copied from the numbered read without the ' N | ' gutter, where tabs appear as \\t. Must match the file at exactly one location; include enough surrounding lines to make it unique. A single trailing newline is ignored. Null when replacing lines by range with start_line/end_line."
-                            },
                             new_text: {
                                 type: "string",
                                 description:
-                                    "Replacement text. May be empty to delete the old lines. A single trailing newline is ignored. Interpreted with \\t as tabs when the old_text tab fallback matched; used verbatim for line-range edits."
+                                    "Replacement text for the line range. May be empty to delete the range. A single trailing newline is ignored. Used verbatim: real tabs, not escape sequences."
                             },
                             start_line: {
-                                type: ["integer", "null"],
+                                type: "integer",
                                 minimum: 1,
                                 description:
-                                    "First line (1-based) of the line range that new_text replaces; used instead of old_text."
+                                    "First line (1-based, inclusive) of the line range that new_text replaces, taken from read_file's numbered output and interpreted in the hash-guarded snapshot of the file."
                             },
                             end_line: {
-                                type: ["integer", "null"],
+                                type: "integer",
                                 minimum: 1,
                                 description:
-                                    "Last line (1-based, inclusive) of the line range that new_text replaces; used instead of old_text."
+                                    "Last line (1-based, inclusive) of the line range that new_text replaces."
+                            },
+                            old_text: {
+                                type: "string",
+                                description:
+                                    "Optional anchor: the text you expect to find at start_line..end_line in the hash-guarded snapshot, used to verify the range before anything is applied. Matching ignores whitespace differences (indentation, tabs vs. spaces, runs of spaces), but the anchor must have exactly as many lines as the range. On a mismatch nothing is applied and the error shows the actual lines at the range plus the line numbers where the anchor text occurs. Copy it from the most recent read_file or edit_file output covering these lines."
                             }
                         },
-                        required: [
-                            "line_hint",
-                            "old_text",
-                            "new_text",
-                            "start_line",
-                            "end_line"
-                        ],
+                        required: ["new_text", "start_line", "end_line"],
                         additionalProperties: false
                     }
                 }
@@ -518,6 +506,20 @@ async function readFile(args) {
     };
 }
 
+/*
+ * Ask why the user denied a request. An empty answer means no reason was
+ * given, which is reported as null.
+ */
+async function requestDenialReason() {
+    const reason = await terminal.question(
+        "Reason for denying (leave empty for no reason): "
+    );
+
+    const trimmedReason = reason.trim();
+
+    return trimmedReason === "" ? null : trimmedReason;
+}
+
 async function requestWriteApproval(filePath, content, previousContent) {
     console.log("\nThe agent wants to write this file:");
     console.log("------------------------------------------------------------");
@@ -555,7 +557,11 @@ async function requestWriteApproval(filePath, content, previousContent) {
     const answer = await terminal.question("Approve this file write? [y/N] ");
     const normalizedAnswer = answer.trim().toLowerCase();
 
-    return normalizedAnswer === "y" || normalizedAnswer === "yes";
+    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+        return { approved: true, denialReason: null };
+    }
+
+    return { approved: false, denialReason: await requestDenialReason() };
 }
 
 async function writeFile(args) {
@@ -578,7 +584,7 @@ async function writeFile(args) {
         }
     }
 
-    const approved = await requestWriteApproval(
+    const { approved, denialReason } = await requestWriteApproval(
         args.file_path,
         args.content,
         previousContent
@@ -589,7 +595,11 @@ async function writeFile(args) {
             approved: false,
             file_path: args.file_path,
             changed: false,
-            message: "The user declined to write this file."
+            denial_reason: denialReason,
+            message:
+                denialReason === null
+                    ? "The user declined to write this file."
+                    : `The user declined to write this file. Reason given: ${denialReason}`
         };
     }
 
@@ -659,25 +669,32 @@ async function requestEditApproval(
     const answer = await terminal.question("Approve this edit? [y/N] ");
     const normalizedAnswer = answer.trim().toLowerCase();
 
-    return normalizedAnswer === "y" || normalizedAnswer === "yes";
+    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+        return { approved: true, denialReason: null };
+    }
+
+    return { approved: false, denialReason: await requestDenialReason() };
 }
 
 /*
- * Apply one or more search/replace edits to an existing file.
+ * Apply one or more line-range edits to an existing file.
  *
- * Reliability comes from four layers:
+ * Reliability comes from five layers:
  *
  *  1. The expected_hash guard rejects edits based on a stale view of the
- *     file, including changes made outside the agent.
- *  2. Content edits are anchored on their old_text; the model's line_hint is
- *     verified first, then searched around, then the whole file, which must
- *     match uniquely. Alternatively, an edit names a line range directly.
- *     "\t" display sequences in old_text are re-read as tabs when the
- *     verbatim text is not found.
- *  3. All edits are resolved and validated against the same snapshot and
+ *     file, including changes made outside the agent, which keeps the line
+ *     numbers trustworthy.
+ *  2. Each edit names the inclusive line range it replaces; the replaced
+ *     lines are never reproduced, so no whitespace or escaping convention
+ *     can break an edit.
+ *  3. An edit may carry an optional old_text anchor that must match the
+ *     replaced lines while ignoring whitespace differences (indentation,
+ *     tabs vs. spaces, spacing runs); a mismatch rejects the whole call and
+ *     reports the actual lines at the range plus where the anchor occurs.
+ *  4. All edits are resolved and validated against the same snapshot and
  *     applied atomically: a single bad edit changes nothing.
- *  4. Failures return structured context (actual hashes, matching line
- *     numbers, numbered nearby lines) so the model can correct itself.
+ *  5. Failures return structured context (actual hashes, total line counts,
+ *     anchor locations) so the model can correct itself.
  */
 async function editFile(args) {
     const absoluteFilePath = resolveWorkspacePath(args.file_path);
@@ -763,7 +780,7 @@ async function editFile(args) {
         })
     );
 
-    const approved = await requestEditApproval(
+    const { approved, denialReason } = await requestEditApproval(
         args.file_path,
         resolvedEdits.length,
         diffText,
@@ -776,7 +793,11 @@ async function editFile(args) {
             approved: false,
             file_path: args.file_path,
             changed: false,
-            message: "The user declined the edit."
+            denial_reason: denialReason,
+            message:
+                denialReason === null
+                    ? "The user declined the edit."
+                    : `The user declined the edit. Reason given: ${denialReason}`
         };
     }
 
@@ -790,14 +811,6 @@ async function editFile(args) {
     await fs.rename(absoluteFilePath, backupFilePath);
     await fs.writeFile(absoluteFilePath, newContent, "utf8");
 
-    /*
-     * Report edits that matched only after the "\t" display sequences were
-     * read as tabs, so the model knows its text was reinterpreted.
-     */
-    const tabEscapedEdits = resolvedEdits
-        .filter((edit) => edit.usedTabEscape)
-        .map((edit) => edit.editIndex + 1);
-
     return {
         approved: true,
         file_path: args.file_path,
@@ -808,14 +821,8 @@ async function editFile(args) {
         hash: sha256Hex(newContent),
         backup_file_path: `${args.file_path}${config.BACKUP_FILE_SUFFIX}`,
         changed_region: buildChangedRegion(newLines, changedRanges),
-        ...(tabEscapedEdits.length > 0
-            ? { tab_escaped_edits: tabEscapedEdits }
-            : {}),
         message:
-            "Edits applied. Use the returned hash for follow-up edits; re-read only if the file changed outside edit_file." +
-            (tabEscapedEdits.length > 0
-                ? ` Edit(s) ${tabEscapedEdits.join(", ")} matched after interpreting \\t sequences as tabs; new_text was interpreted the same way.`
-                : "")
+            "Edits applied. Use the returned hash for follow-up edits; re-read only if the file changed outside edit_file."
     };
 }
 
@@ -831,7 +838,11 @@ async function requestDeleteApproval(filePath, sizeBytes) {
     );
     const normalizedAnswer = answer.trim().toLowerCase();
 
-    return normalizedAnswer === "y" || normalizedAnswer === "yes";
+    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+        return { approved: true, denialReason: null };
+    }
+
+    return { approved: false, denialReason: await requestDenialReason() };
 }
 
 async function deleteFile(args) {
@@ -842,14 +853,21 @@ async function deleteFile(args) {
         throw new Error(`"${args.file_path}" is not a regular file.`);
     }
 
-    const approved = await requestDeleteApproval(args.file_path, stats.size);
+    const { approved, denialReason } = await requestDeleteApproval(
+        args.file_path,
+        stats.size
+    );
 
     if (!approved) {
         return {
             approved: false,
             file_path: args.file_path,
             deleted: false,
-            message: "The user declined to delete this file."
+            denial_reason: denialReason,
+            message:
+                denialReason === null
+                    ? "The user declined to delete this file."
+                    : `The user declined to delete this file. Reason given: ${denialReason}`
         };
     }
 
@@ -884,17 +902,25 @@ async function requestCommandApproval(command) {
     const answer = await terminal.question("Approve this command? [y/N] ");
     const normalizedAnswer = answer.trim().toLowerCase();
 
-    return normalizedAnswer === "y" || normalizedAnswer === "yes";
+    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+        return { approved: true, denialReason: null };
+    }
+
+    return { approved: false, denialReason: await requestDenialReason() };
 }
 
 async function runCommand(args) {
-    const approved = await requestCommandApproval(args.command);
+    const { approved, denialReason } = await requestCommandApproval(args.command);
 
     if (!approved) {
         return {
             approved: false,
             command: args.command,
-            message: "The user declined to run this command."
+            denial_reason: denialReason,
+            message:
+                denialReason === null
+                    ? "The user declined to run this command."
+                    : `The user declined to run this command. Reason given: ${denialReason}`
         };
     }
 
@@ -1251,9 +1277,8 @@ function extractErrorDetails(error) {
     }
 
     /*
-     * Structured context attached by EditEngineError (matched line numbers,
-     * numbered nearby lines, hashes) is passed through to the model so it can
-     * correct itself.
+     * Structured context attached by EditEngineError (actual hashes, line
+     * counts) is passed through to the model so it can correct itself.
      */
     if (error.data !== undefined) {
         details.data = error.data;

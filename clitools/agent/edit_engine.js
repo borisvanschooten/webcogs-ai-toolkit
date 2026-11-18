@@ -1,32 +1,24 @@
 /*
- * Pure helpers for content-anchored file editing and unified diff generation.
+ * Pure helpers for line-range file editing and unified diff generation.
  *
- * The agent's edit_file tool treats the model's line numbers as hints only:
- * edits are anchored on their old_text content, the anchor is searched first
- * at the hinted line, then in a window around the hint, then through the
- * whole file, and ambiguous or missing anchors reject the whole patch
- * atomically. Failures carry structured data (matched line numbers, numbered
- * nearby lines, hashes) so the model can correct itself.
+ * The agent's edit_file tool replaces an inclusive 1-based line range with
+ * new text; the replaced lines are never reproduced. Line numbers come from
+ * read_file's numbered output, and the expected_hash guard in agent.js keeps
+ * them trustworthy: an edit is only attempted while the hash still matches
+ * the file that was read. Each edit may additionally carry an optional
+ * old_text anchor that must match the lines it replaces (ignoring whitespace
+ * differences), which catches wrong coordinates even under a fresh hash.
+ * Multiple edits are resolved against the same snapshot, sorted by position,
+ * checked for overlap, and applied atomically. Failures carry structured
+ * data (actual hashes, line counts, anchor locations) so the model can
+ * correct itself.
  *
  * This module deliberately contains no I/O and no terminal interaction, so
- * the matching, application, and diff logic can be unit-tested in isolation
- * (see edit_engine_test.js).
+ * the application and diff logic can be unit-tested in isolation (see
+ * edit_engine_test.js).
  */
 
 import { createHash } from "node:crypto";
-
-/*
- * How far from line_hint an edit's old_text may be found before the search
- * widens to the whole file (mimics GNU patch's offset search).
- */
-const HINT_SEARCH_OFFSET = 20;
-
-/* Numbered context lines reported when an anchor cannot be found. */
-const NEARBY_LINES_BEFORE = 6;
-const NEARBY_LINES_AFTER = 6;
-const MAX_NEARBY_LINES = 24;
-
-const MAX_MATCHES_REPORTED = 10;
 
 /* Unified diff appearance. */
 const DIFF_CONTEXT_LINES = 3;
@@ -38,6 +30,14 @@ const MAX_DIFF_LINES = 400;
  * still a correct diff, just not a minimal one.
  */
 const MAX_LCS_CELLS = 4000000;
+
+/*
+ * Anchor verification (optional old_text per edit). The anchor's
+ * whitespace-normalized lines must equal the range's; a mismatch reports the
+ * verbatim lines at the range plus the positions where the anchor occurs.
+ */
+const MAX_ANCHOR_MATCHES = 10;
+const MAX_ANCHOR_RANGE_PREVIEW_LINES = 40;
 
 /*
  * Errors of this class carry a structured `data` object that the agent
@@ -107,35 +107,17 @@ export function lineNumberWidth(totalLines) {
 }
 
 /*
- * Whitespace that the model must reproduce exactly is displayed escaped:
- * every tab becomes the two-character sequence "\t", so indentation can be
- * counted and copied from the display. All model-facing output (read_file
- * content, nearby-line error windows, changed-region previews) flows through
- * formatNumberedLines, so the convention is applied in one place.
- */
-export function escapeTabsForDisplay(text) {
-    return text.replace(/\t/g, "\\t");
-}
-
-/*
- * The matching counterpart: read the "\t" display sequences in model-supplied
- * text back as real tabs. Used only as a fallback when the verbatim text
- * does not match the file (see resolveEdit).
- */
-export function unescapeTabsFromDisplay(text) {
-    return text.includes("\\t") ? text.split("\\t").join("\t") : text;
-}
-
-/*
  * Numbered gutter used everywhere lines are shown to the model: a fixed-width
- * right-aligned number, padded with spaces, then " | ", then the line with
- * tabs escaped by escapeTabsForDisplay.
+ * right-aligned number, padded with spaces, then " | ", then the line
+ * verbatim. Tabs appear as real characters and new_text is verbatim too, so
+ * text can be copied between read_file output and edit_file input without
+ * any conversion.
  */
 export function formatNumberedLines(lines, firstLineNumber, width) {
     return lines
         .map(
             (line, index) =>
-                `${String(firstLineNumber + index).padStart(width)} | ${escapeTabsForDisplay(line)}`
+                `${String(firstLineNumber + index).padStart(width)} | ${line}`
         )
         .join("\n");
 }
@@ -161,230 +143,142 @@ export function parseEditLines(text) {
     return lines;
 }
 
-function matchesAt(lines, oldLines, position) {
-    if (position < 0 || position + oldLines.length > lines.length) {
-        return false;
-    }
-
-    for (let index = 0; index < oldLines.length; index++) {
-        if (lines[position + index] !== oldLines[index]) {
-            return false;
-        }
-    }
-
-    return true;
+/*
+ * Whitespace-insensitive form of a line for anchor matching: leading and
+ * trailing whitespace are removed and internal whitespace runs collapse to a
+ * single space, so an anchor written with different indentation, tabs, or
+ * spacing still matches the same code. A whitespace-only line and an empty
+ * line both normalize to "".
+ */
+export function normalizeWhitespace(line) {
+    return line.replace(/\s+/g, " ").trim();
 }
 
-function findAllMatches(lines, oldLines) {
+/*
+ * The 1-based positions where the (already whitespace-normalized) anchor
+ * occurs in the (already whitespace-normalized) file lines, capped at
+ * MAX_ANCHOR_MATCHES. `capped` reports whether the scan stopped early.
+ */
+function findAnchorMatches(lines, anchorLines) {
     const matches = [];
-    const firstLine = oldLines[0];
+    let capped = false;
 
-    for (
-        let position = 0;
-        position + oldLines.length <= lines.length;
-        position++
-    ) {
-        if (lines[position] !== firstLine) {
-            continue;
+    if (anchorLines.length === 0 || anchorLines.length > lines.length) {
+        return { matches, capped };
+    }
+
+    for (let start = 0; start + anchorLines.length <= lines.length; start++) {
+        let matched = true;
+
+        for (let offset = 0; offset < anchorLines.length; offset++) {
+            if (lines[start + offset] !== anchorLines[offset]) {
+                matched = false;
+                break;
+            }
         }
 
-        if (matchesAt(lines, oldLines, position)) {
-            matches.push(position);
+        if (matched) {
+            matches.push(start + 1);
+
+            if (matches.length === MAX_ANCHOR_MATCHES) {
+                capped = start + 1 + anchorLines.length <= lines.length;
+                break;
+            }
         }
     }
 
-    return matches;
+    return { matches, capped };
 }
 
-function ambiguousAnchorError(label, editIndex, hint, matchPositions) {
-    const reported = matchPositions
-        .slice(0, MAX_MATCHES_REPORTED)
-        .map((position) => position + 1);
+/*
+ * Optional anchor check for one edit: when old_text is provided, its
+ * whitespace-normalized lines must equal the whitespace-normalized lines the
+ * range replaces. A mismatch throws before anything is applied, and the
+ * error data carries the verbatim lines currently at the range plus the
+ * positions where the anchor does occur, so the model can correct its
+ * coordinates (or its anchor) without re-reading the file.
+ */
+function verifyOldTextAnchor(lines, edit, index, label, startLine, endLine) {
+    if (edit.old_text === undefined || edit.old_text === null) {
+        return;
+    }
 
-    return new EditEngineError(
-        `${label}: old_text matches ${matchPositions.length} locations (lines ${reported.join(
-            ", "
-        )}${matchPositions.length > reported.length ? ", ..." : ""}). Extend old_text with more surrounding lines so it matches exactly one location, or pass a line_hint pointing at the intended one.`,
+    if (typeof edit.old_text !== "string") {
+        throw new EditEngineError(
+            `${label}: old_text must be a string when provided.`,
+            { edit_index: index }
+        );
+    }
+
+    if (parseEditLines(edit.old_text).length === 0) {
+        throw new EditEngineError(
+            `${label}: old_text was provided but is empty; omit it, or give the text expected at lines ${startLine}-${endLine}.`,
+            {
+                edit_index: index,
+                start_line: startLine,
+                end_line: endLine
+            }
+        );
+    }
+
+    const anchorLines = parseEditLines(edit.old_text).map(normalizeWhitespace);
+    const rangeLines = lines
+        .slice(startLine - 1, endLine)
+        .map(normalizeWhitespace);
+
+    if (
+        anchorLines.length === rangeLines.length &&
+        anchorLines.every((line, offset) => line === rangeLines[offset])
+    ) {
+        return;
+    }
+
+    const anchorOccurrence = findAnchorMatches(
+        lines.map(normalizeWhitespace),
+        anchorLines
+    );
+
+    const actualLines = lines.slice(startLine - 1, endLine);
+    let actualLinesAtRange = formatNumberedLines(
+        actualLines.slice(0, MAX_ANCHOR_RANGE_PREVIEW_LINES),
+        startLine,
+        lineNumberWidth(lines.length)
+    );
+
+    if (actualLines.length > MAX_ANCHOR_RANGE_PREVIEW_LINES) {
+        actualLinesAtRange += `\n... ${
+            actualLines.length - MAX_ANCHOR_RANGE_PREVIEW_LINES
+        } more line(s) not shown`;
+    }
+
+    const where =
+        anchorOccurrence.matches.length > 0
+            ? `The anchor text occurs at line(s) ${anchorOccurrence.matches.join(
+                  ", "
+              )}; retry with those coordinates.`
+            : "The anchor text does not occur anywhere in the file; re-read the file and rebuild the edit.";
+
+    throw new EditEngineError(
+        `${label}: old_text does not match the current contents of lines ${startLine}-${endLine}, so the whole call was rejected and nothing was applied. ${where} Either move the range to where the anchor occurs, or update old_text to match actual_lines_at_range.`,
         {
-            edit_index: editIndex,
-            matches_found: matchPositions.length,
-            matching_lines: reported,
-            line_hint: hint
+            edit_index: index,
+            start_line: startLine,
+            end_line: endLine,
+            range_line_count: rangeLines.length,
+            anchor_line_count: anchorLines.length,
+            actual_lines_at_range: actualLinesAtRange,
+            anchor_found_at_lines: anchorOccurrence.matches,
+            anchor_matches_capped: anchorOccurrence.capped
         }
     );
 }
 
-function missingAnchorError(label, editIndex, hint, lines, oldLines) {
-    const data = { edit_index: editIndex, matches_found: 0, line_hint: hint };
-    let message = `${label}: old_text was not found in the file.`;
-
-    if (hint !== null) {
-        if (hint >= 1 && hint <= lines.length) {
-            message += ` Line ${hint} is ${JSON.stringify(lines[hint - 1])}.`;
-        } else {
-            message += ` The file has ${lines.length} lines, so line ${hint} does not exist.`;
-        }
-
-        const start = Math.max(1, hint - NEARBY_LINES_BEFORE);
-        let end = Math.min(
-            lines.length,
-            hint - 1 + oldLines.length - 1 + NEARBY_LINES_AFTER
-        );
-
-        if (end < start) {
-            end = start;
-        }
-
-        if (end - start + 1 > MAX_NEARBY_LINES) {
-            end = start + MAX_NEARBY_LINES - 1;
-        }
-
-        data.nearby_lines = formatNumberedLines(
-            lines.slice(start - 1, end),
-            start,
-            lineNumberWidth(lines.length)
-        );
-    } else {
-        message +=
-            " Read the file to get numbered lines, then retry with an exact old_text and a line_hint, or replace the lines by range with start_line and end_line.";
-    }
-
-    return new EditEngineError(message, data);
-}
-
-/*
- * Anchor resolution for a content edit, most specific first: exact match at
- * the hint, then a match within HINT_SEARCH_OFFSET lines of the hint (the
- * file may have shifted since it was read), then the whole file, which must
- * match uniquely. An exact hit at the hint disambiguates even if the same
- * text occurs elsewhere. Throws an EditEngineError when the anchor is
- * missing or ambiguous.
- */
-function resolveContentAnchor(lines, oldLines, hint, index, label) {
-    const globalMatches = findAllMatches(lines, oldLines);
-
-    let position = -1;
-    let anchoredAtHint = false;
-
-    if (hint !== null && matchesAt(lines, oldLines, hint - 1)) {
-        position = hint - 1;
-        anchoredAtHint = true;
-    } else if (hint !== null) {
-        const windowMatches = globalMatches.filter(
-            (match) => Math.abs(match - (hint - 1)) <= HINT_SEARCH_OFFSET
-        );
-
-        if (windowMatches.length > 1) {
-            throw ambiguousAnchorError(label, index, hint, windowMatches);
-        }
-
-        if (windowMatches.length === 1) {
-            position = windowMatches[0];
-        }
-    }
-
-    if (position === -1) {
-        if (globalMatches.length === 1) {
-            position = globalMatches[0];
-        } else if (globalMatches.length === 0) {
-            throw missingAnchorError(label, index, hint, lines, oldLines);
-        } else {
-            throw ambiguousAnchorError(label, index, hint, globalMatches);
-        }
-    }
-
-    return { position, anchoredAtHint };
-}
-
-function resolveContentEdit(lines, edit, index, label) {
-    const oldLines = parseEditLines(edit.old_text);
-
-    if (oldLines.length === 0) {
-        throw new EditEngineError(
-            `${label}: old_text is empty. Use write_file to create a file or replace its whole contents.`,
-            { edit_index: index }
-        );
-    }
-
-    if (edit.old_text === edit.new_text) {
-        throw new EditEngineError(
-            `${label}: old_text and new_text are identical, so nothing would change.`,
-            { edit_index: index }
-        );
-    }
-
-    const hint = Number.isInteger(edit.line_hint) ? edit.line_hint : null;
-    let newLines = parseEditLines(edit.new_text);
-    let usedTabEscape = false;
-    let anchor;
-
-    try {
-        anchor = resolveContentAnchor(lines, oldLines, hint, index, label);
-    } catch (exactError) {
-        /*
-         * Fallback for the "\t" display convention: text copied from
-         * read_file contains the two-character sequence "\t" for every real
-         * tab. When the verbatim text is not found at all, retry with those
-         * sequences read as tabs. An ambiguous verbatim match does not
-         * trigger the fallback: the text was found, so the model must add
-         * context instead. When the fallback matches, new_text is
-         * interpreted the same way.
-         */
-        const unescapedOldText = unescapeTabsFromDisplay(edit.old_text);
-        const isMissingAnchor =
-            exactError instanceof EditEngineError &&
-            exactError.data &&
-            exactError.data.matches_found === 0;
-
-        if (unescapedOldText === edit.old_text || !isMissingAnchor) {
-            throw exactError;
-        }
-
-        try {
-            anchor = resolveContentAnchor(
-                lines,
-                parseEditLines(unescapedOldText),
-                hint,
-                index,
-                label
-            );
-        } catch (fallbackError) {
-            /* A fallback ambiguity found the text and is more informative. */
-            if (
-                fallbackError instanceof EditEngineError &&
-                fallbackError.data &&
-                fallbackError.data.matches_found > 0
-            ) {
-                throw fallbackError;
-            }
-
-            throw exactError;
-        }
-
-        usedTabEscape = true;
-        newLines = parseEditLines(unescapeTabsFromDisplay(edit.new_text));
-    }
-
-    return {
-        editIndex: index,
-        position: anchor.position,
-        oldLength: oldLines.length,
-        newLines,
-        lineHint: hint,
-        anchoredAtHint: anchor.anchoredAtHint,
-        offset:
-            anchor.anchoredAtHint || hint === null
-                ? 0
-                : anchor.position + 1 - hint,
-        usedTabEscape
-    };
-}
-
 /*
  * A range edit replaces the inclusive 1-based line range with new_text, so
- * the old text never has to be reproduced. The expected_hash guard keeps the
- * line numbers trustworthy. new_text is used verbatim: real tabs, not the
- * "\t" display sequence.
+ * the replaced lines never have to be reproduced. The expected_hash guard in
+ * agent.js keeps the line numbers trustworthy, and an optional old_text
+ * anchor is verified against the range (see verifyOldTextAnchor). new_text
+ * is used verbatim.
  */
 function resolveRangeEdit(lines, edit, index, label) {
     const startLine = edit.start_line;
@@ -392,7 +286,7 @@ function resolveRangeEdit(lines, edit, index, label) {
 
     if (!Number.isInteger(startLine) || !Number.isInteger(endLine)) {
         throw new EditEngineError(
-            `${label}: provide either old_text, or both start_line and end_line.`,
+            `${label}: start_line and end_line are required integers.`,
             { edit_index: index }
         );
     }
@@ -409,16 +303,13 @@ function resolveRangeEdit(lines, edit, index, label) {
         );
     }
 
+    verifyOldTextAnchor(lines, edit, index, label, startLine, endLine);
+
     return {
         editIndex: index,
         position: startLine - 1,
         oldLength: endLine - startLine + 1,
-        newLines: parseEditLines(edit.new_text),
-        lineHint: null,
-        anchoredAtHint: false,
-        offset: 0,
-        usedTabEscape: false,
-        range: { start_line: startLine, end_line: endLine }
+        newLines: parseEditLines(edit.new_text)
     };
 }
 
@@ -427,7 +318,7 @@ function resolveEdit(lines, edit, index, totalEdits) {
 
     if (edit === null || typeof edit !== "object") {
         throw new EditEngineError(
-            `${label}: each edit must provide old_text, or start_line and end_line, plus new_text.`,
+            `${label}: each edit must provide start_line, end_line, and new_text.`,
             { edit_index: index }
         );
     }
@@ -436,20 +327,6 @@ function resolveEdit(lines, edit, index, totalEdits) {
         throw new EditEngineError(`${label}: new_text is a required string.`, {
             edit_index: index
         });
-    }
-
-    if (typeof edit.old_text === "string") {
-        if (
-            (edit.start_line !== undefined && edit.start_line !== null) ||
-            (edit.end_line !== undefined && edit.end_line !== null)
-        ) {
-            throw new EditEngineError(
-                `${label}: provide either old_text or start_line/end_line, not both.`,
-                { edit_index: index }
-            );
-        }
-
-        return resolveContentEdit(lines, edit, index, label);
     }
 
     return resolveRangeEdit(lines, edit, index, label);

@@ -3,7 +3,7 @@
  *
  * Run from the workspace root:
  *
- *   node webcogs/edit_engine_test.js
+ *   node clitools/agent/edit_engine_test.js
  */
 
 import assert from "node:assert/strict";
@@ -13,17 +13,16 @@ import {
     applyResolvedEdits,
     buildChangedRegion,
     capDiff,
-    escapeTabsForDisplay,
     formatNumberedLines,
     formatUnifiedDiff,
     joinLines,
     lineNumberWidth,
     normalizeHash,
+    normalizeWhitespace,
     parseEditLines,
     resolveEdits,
     sha256Hex,
-    splitLines,
-    unescapeTabsFromDisplay
+    splitLines
 } from "./edit_engine.js";
 
 const tests = [];
@@ -77,6 +76,13 @@ test("formatNumberedLines pads numbers with spaces and uses ' | '", () => {
     assert.equal(formatNumberedLines(["const a = 1;"], 42, 4), "  42 | const a = 1;");
 });
 
+test("formatNumberedLines shows tabs verbatim", () => {
+    assert.equal(
+        formatNumberedLines(["\tconst a = 1;"], 1, 1),
+        "1 | \tconst a = 1;"
+    );
+});
+
 test("lineNumberWidth grows with the line count", () => {
     assert.equal(lineNumberWidth(0), 1);
     assert.equal(lineNumberWidth(9), 1);
@@ -98,7 +104,7 @@ test("parseEditLines ignores a single trailing newline", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* resolveEdits anchor resolution                                      */
+/* resolveEdits: line-range resolution                                 */
 /* ------------------------------------------------------------------ */
 
 const sampleLines = [
@@ -111,121 +117,128 @@ const sampleLines = [
     "}"
 ];
 
-test("an exact line_hint anchors the edit", () => {
-    const [resolved] = resolveEdits(sampleLines, [
-        { line_hint: 6, old_text: "  return 2;", new_text: "  return 3;" }
+test("a range edit replaces the range with new_text verbatim", () => {
+    const resolved = resolveEdits(sampleLines, [
+        {
+            start_line: 5,
+            end_line: 7,
+            new_text: "function b() {\n\treturn 2;\n}"
+        }
     ]);
 
-    assert.equal(resolved.position, 5);
-    assert.equal(resolved.anchoredAtHint, true);
-    assert.equal(resolved.offset, 0);
+    assert.equal(resolved.length, 1);
+    assert.equal(resolved[0].position, 4);
+    assert.equal(resolved[0].oldLength, 3);
+
+    const { newLines } = applyResolvedEdits(sampleLines, resolved);
+    assert.deepEqual(newLines.slice(4), ["function b() {", "\treturn 2;", "}"]);
 });
 
-test("a stale line_hint is recovered by the offset search", () => {
-    const [resolved] = resolveEdits(sampleLines, [
-        { line_hint: 1, old_text: "  return 2;", new_text: "  return 3;" }
+test("a range edit can delete its range with empty new_text", () => {
+    const resolved = resolveEdits(sampleLines, [
+        { start_line: 4, end_line: 7, new_text: "" }
     ]);
 
-    assert.equal(resolved.position, 5);
-    assert.equal(resolved.anchoredAtHint, false);
-    assert.equal(resolved.offset, 5);
+    const { newLines } = applyResolvedEdits(sampleLines, resolved);
+    assert.deepEqual(newLines, ["function a() {", "  return 1;", "}"]);
 });
 
-test("a unique match is found without a line_hint", () => {
-    const [resolved] = resolveEdits(sampleLines, [
-        { old_text: "  return 2;", new_text: "  return 3;" }
+test("a single-line range edit works", () => {
+    const resolved = resolveEdits(sampleLines, [
+        { start_line: 2, end_line: 2, new_text: "  return 42;" }
     ]);
 
-    assert.equal(resolved.position, 5);
-    assert.equal(resolved.lineHint, null);
+    const { newLines } = applyResolvedEdits(sampleLines, resolved);
+    assert.deepEqual(newLines, [
+        "function a() {",
+        "  return 42;",
+        "}",
+        "",
+        "function b() {",
+        "  return 2;",
+        "}"
+    ]);
 });
 
-test("an ambiguous anchor without a hint is rejected with match lines", () => {
+test("multiple range edits are resolved against the original snapshot", () => {
+    const lines = ["a", "b", "c", "d", "e"];
+
+    const resolved = resolveEdits(lines, [
+        { start_line: 4, end_line: 5, new_text: "D" },
+        { start_line: 2, end_line: 2, new_text: "B1\nB2" }
+    ]);
+
+    assert.deepEqual(
+        resolved.map((edit) => edit.position),
+        [1, 3]
+    );
+
+    const { newLines, changedRanges } = applyResolvedEdits(lines, resolved);
+
+    assert.deepEqual(newLines, ["a", "B1", "B2", "c", "D"]);
+    assert.deepEqual(
+        changedRanges.map((range) => range.old_start_line),
+        [2, 4]
+    );
+});
+
+test("an out-of-file line range is rejected with the line count", () => {
     assert.throws(
-        () => resolveEdits(sampleLines, [{ old_text: "}", new_text: "  }" }]),
+        () =>
+            resolveEdits(sampleLines, [
+                { start_line: 6, end_line: 9, new_text: "x" }
+            ]),
         (error) => {
             assert.ok(error instanceof EditEngineError);
-            assert.equal(error.data.matches_found, 2);
-            assert.deepEqual(error.data.matching_lines, [3, 7]);
+            assert.equal(error.data.total_lines, 7);
             return true;
         }
     );
 });
 
-test("a line_hint disambiguates an otherwise ambiguous anchor", () => {
-    const [resolved] = resolveEdits(sampleLines, [
-        { line_hint: 7, old_text: "}", new_text: "  }" }
-    ]);
-
-    assert.equal(resolved.position, 6);
-    assert.equal(resolved.anchoredAtHint, true);
-});
-
-test("a missing anchor reports numbered nearby lines", () => {
-    try {
-        resolveEdits(sampleLines, [
-            { line_hint: 2, old_text: "  return 99;", new_text: "" }
-        ]);
-        assert.fail("expected a missing-anchor error");
-    } catch (error) {
-        assert.ok(error instanceof EditEngineError);
-        assert.equal(error.data.matches_found, 0);
-        const firstNearbyLine = error.data.nearby_lines.split("\n")[0];
-        assert.equal(firstNearbyLine, "1 | function a() {");
-    }
-});
-
-test("an anchor beyond the offset window is still found globally", () => {
-    const lines = Array.from({ length: 30 }, (unused, index) =>
-        index === 26 ? "TARGET" : `filler ${index}`
-    );
-
-    const [resolved] = resolveEdits(lines, [
-        { line_hint: 1, old_text: "TARGET", new_text: "REPLACED" }
-    ]);
-
-    assert.equal(resolved.position, 26);
-    assert.equal(resolved.offset, 26);
-});
-
-test("matching is immune to CRLF line endings", () => {
-    const { lines } = splitLines("a\r\nTARGET\r\n");
-
-    const [resolved] = resolveEdits(lines, [
-        { old_text: "TARGET", new_text: "REPLACED" }
-    ]);
-
-    assert.equal(resolved.position, 1);
-});
-
-test("empty old_text is rejected", () => {
+test("an out-of-file range on an empty file is rejected", () => {
     assert.throws(
-        () => resolveEdits(sampleLines, [{ old_text: "", new_text: "x" }]),
+        () => resolveEdits([], [{ start_line: 1, end_line: 1, new_text: "x" }]),
+        (error) => {
+            assert.ok(error instanceof EditEngineError);
+            assert.equal(error.data.total_lines, 0);
+            return true;
+        }
+    );
+});
+
+test("an inverted line range is rejected", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                { start_line: 3, end_line: 2, new_text: "x" }
+            ]),
         EditEngineError
     );
 });
 
-test("identical old_text and new_text is rejected", () => {
+test("missing start_line or end_line is rejected", () => {
     assert.throws(
-        () => resolveEdits(sampleLines, [{ old_text: "}", new_text: "}" }]),
+        () => resolveEdits(sampleLines, [{ new_text: "x" }]),
         EditEngineError
     );
+
+    assert.throws(
+        () => resolveEdits(sampleLines, [{ start_line: 1, new_text: "x" }]),
+        EditEngineError
+    );
+});
+
+test("a non-object edit is rejected", () => {
+    assert.throws(() => resolveEdits(sampleLines, [null]), EditEngineError);
 });
 
 test("overlapping edits are rejected", () => {
     assert.throws(
         () =>
             resolveEdits(sampleLines, [
-                {
-                    line_hint: 1,
-                    old_text: "function a() {",
-                    new_text: "function z() {"
-                },
-                {
-                    line_hint: 1,
-                    old_text: "function a() {\n  return 1;",
-                    new_text: "function a() {\n  return 9;"
-                }
+                { start_line: 1, end_line: 3, new_text: "x" },
+                { start_line: 3, end_line: 4, new_text: "y" }
             ]),
         /overlap/
     );
@@ -233,27 +246,188 @@ test("overlapping edits are rejected", () => {
 
 test("adjacent (non-overlapping) edits are allowed", () => {
     const resolved = resolveEdits(sampleLines, [
-        { line_hint: 1, old_text: "function a() {", new_text: "function z() {" },
-        { line_hint: 2, old_text: "  return 1;", new_text: "  return 9;" }
+        { start_line: 1, end_line: 2, new_text: "x" },
+        { start_line: 3, end_line: 3, new_text: "y" }
     ]);
 
     assert.equal(resolved.length, 2);
     assert.deepEqual(
         resolved.map((edit) => edit.position),
-        [0, 1]
+        [0, 2]
     );
 });
 
 /* ------------------------------------------------------------------ */
+/* old_text anchor verification                                        */
+/* ------------------------------------------------------------------ */
+
+test("normalizeWhitespace trims and collapses whitespace runs", () => {
+    assert.equal(normalizeWhitespace("\tconst a\t=  1;  "), "const a = 1;");
+    assert.equal(normalizeWhitespace("   "), "");
+    assert.equal(normalizeWhitespace(""), "");
+});
+
+test("an exact old_text anchor passes", () => {
+    const resolved = resolveEdits(sampleLines, [
+        {
+            start_line: 5,
+            end_line: 7,
+            new_text: "function b() {\n\treturn 2;\n}",
+            old_text: "function b() {\n  return 2;\n}"
+        }
+    ]);
+
+    assert.equal(resolved.length, 1);
+});
+
+test("an old_text anchor ignores indentation and tab/space differences", () => {
+    const resolved = resolveEdits(sampleLines, [
+        {
+            start_line: 1,
+            end_line: 3,
+            new_text: "x",
+            old_text: "function a() {\n\treturn 1;\n}"
+        }
+    ]);
+
+    assert.equal(resolved.length, 1);
+});
+
+test("an old_text anchor ignores runs of internal spaces", () => {
+    const resolved = resolveEdits(["const total = a + b;"], [
+        {
+            start_line: 1,
+            end_line: 1,
+            new_text: "const total = a - b;",
+            old_text: "const  total  =  a + b;"
+        }
+    ]);
+
+    assert.equal(resolved.length, 1);
+});
+
+test("an old_text anchor matches whitespace-only lines against blank lines", () => {
+    const resolved = resolveEdits(sampleLines, [
+        {
+            start_line: 3,
+            end_line: 5,
+            new_text: "}",
+            old_text: "}\n   \nfunction b() {"
+        }
+    ]);
+
+    assert.equal(resolved.length, 1);
+});
+
+test("a wrong old_text anchor is rejected and reports where the anchor occurs", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                {
+                    start_line: 1,
+                    end_line: 3,
+                    new_text: "x",
+                    old_text: "function b() {\n  return 2;\n}"
+                }
+            ]),
+        (error) => {
+            assert.ok(error instanceof EditEngineError);
+            assert.equal(error.data.edit_index, 0);
+            assert.equal(error.data.start_line, 1);
+            assert.equal(error.data.end_line, 3);
+            assert.equal(error.data.range_line_count, 3);
+            assert.equal(error.data.anchor_line_count, 3);
+            assert.deepEqual(error.data.anchor_found_at_lines, [5]);
+            assert.equal(error.data.anchor_matches_capped, false);
+            assert.match(error.message, /old_text does not match/);
+            assert.match(error.message, /occurs at line\(s\) 5/);
+            assert.equal(
+                error.data.actual_lines_at_range.split("\n")[0],
+                "1 | function a() {"
+            );
+            return true;
+        }
+    );
+});
+
+test("an anchor that occurs nowhere reports no positions", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                {
+                    start_line: 1,
+                    end_line: 2,
+                    new_text: "x",
+                    old_text: "class c {\n  return 9;\n}"
+                }
+            ]),
+        (error) => {
+            assert.deepEqual(error.data.anchor_found_at_lines, []);
+            assert.match(error.message, /does not occur anywhere/);
+            return true;
+        }
+    );
+});
+
+test("an anchor with a different line count than the range is rejected", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                {
+                    start_line: 5,
+                    end_line: 7,
+                    new_text: "x",
+                    old_text: "function b() {"
+                }
+            ]),
+        (error) => {
+            assert.equal(error.data.range_line_count, 3);
+            assert.equal(error.data.anchor_line_count, 1);
+            return true;
+        }
+    );
+});
+
+test("an anchor occurring several times reports every position", () => {
+    assert.throws(
+        () =>
+            resolveEdits(["}", "a", "}", "b", "}"], [
+                { start_line: 2, end_line: 2, new_text: "x", old_text: "}" }
+            ]),
+        (error) => {
+            assert.deepEqual(error.data.anchor_found_at_lines, [1, 3, 5]);
+            return true;
+        }
+    );
+});
+
+test("a non-string or empty old_text is rejected", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                { start_line: 1, end_line: 1, new_text: "x", old_text: 5 }
+            ]),
+        /old_text must be a string/
+    );
+
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                { start_line: 1, end_line: 1, new_text: "x", old_text: "" }
+            ]),
+        /old_text was provided but is empty/
+    );
+});
+/* ------------------------------------------------------------------ */
 /* applyResolvedEdits                                                  */
 /* ------------------------------------------------------------------ */
 
-test("applyResolvedEdits applies insertion, replacement, and deletion", () => {
+test("applyResolvedEdits applies growth, replacement, and deletion", () => {
     const lines = ["a", "b", "c", "d", "e"];
 
     const resolved = resolveEdits(lines, [
-        { line_hint: 2, old_text: "b", new_text: "B1\nB2" },
-        { line_hint: 5, old_text: "d\ne", new_text: "" }
+        { start_line: 2, end_line: 2, new_text: "B1\nB2" },
+        { start_line: 4, end_line: 5, new_text: "" }
     ]);
 
     const { newLines, changedRanges } = applyResolvedEdits(lines, resolved);
@@ -281,8 +455,8 @@ test("buildChangedRegion returns a numbered window with fresh line numbers", () 
     const lines = ["a", "b", "c", "d", "e"];
 
     const resolved = resolveEdits(lines, [
-        { line_hint: 2, old_text: "b", new_text: "B1\nB2" },
-        { line_hint: 5, old_text: "d\ne", new_text: "" }
+        { start_line: 2, end_line: 2, new_text: "B1\nB2" },
+        { start_line: 4, end_line: 5, new_text: "" }
     ]);
 
     const { newLines, changedRanges } = applyResolvedEdits(lines, resolved);
@@ -399,158 +573,7 @@ test("normalizeHash tolerates prefixes, whitespace, and casing", () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* Tab display escaping                                                */
-/* ------------------------------------------------------------------ */
-
-test("formatNumberedLines shows tabs as the two characters \\t", () => {
-    assert.equal(
-        formatNumberedLines(["\tconst a = 1;"], 1, 1),
-        "1 | \\tconst a = 1;"
-    );
-    assert.equal(escapeTabsForDisplay("a\tb"), "a\\tb");
-    assert.equal(unescapeTabsFromDisplay("a\\tb"), "a\tb");
-    assert.equal(unescapeTabsFromDisplay("no escapes"), "no escapes");
-});
-
-test("old_text with \\t display sequences falls back to real tabs", () => {
-    const lines = ["\tfunction a() {", "\t\treturn 1;", "\t}"];
-
-    const [resolved] = resolveEdits(lines, [
-        {
-            line_hint: 2,
-            old_text: "\\t\\treturn 1;",
-            new_text: "\\t\\treturn 2;"
-        }
-    ]);
-
-    assert.equal(resolved.position, 1);
-    assert.equal(resolved.usedTabEscape, true);
-    assert.deepEqual(resolved.newLines, ["\t\treturn 2;"]);
-});
-
-test("literal backslash-t text matches verbatim without the fallback", () => {
-    const lines = ["if (ch === '\\t') {"];
-
-    const [resolved] = resolveEdits(lines, [
-        {
-            line_hint: 1,
-            old_text: "if (ch === '\\t') {",
-            new_text: "if (ch === '\\v') {"
-        }
-    ]);
-
-    assert.equal(resolved.position, 0);
-    assert.equal(resolved.usedTabEscape, false);
-    assert.deepEqual(resolved.newLines, ["if (ch === '\\v') {"]);
-});
-
-test("an ambiguous tab fallback reports the matching lines", () => {
-    const lines = [
-        "\treturn 1;",
-        "\treturn 2;",
-        "x",
-        "\treturn 1;",
-        "\treturn 2;"
-    ];
-
-    assert.throws(
-        () =>
-            resolveEdits(lines, [
-                { old_text: "\\treturn 1;\n\\treturn 2;", new_text: "" }
-            ]),
-        (error) => {
-            assert.ok(error instanceof EditEngineError);
-            assert.equal(error.data.matches_found, 2);
-            assert.deepEqual(error.data.matching_lines, [1, 4]);
-            return true;
-        }
-    );
-});
-
-/* ------------------------------------------------------------------ */
-/* Line-range edits                                                    */
-/* ------------------------------------------------------------------ */
-
-test("a line-range edit replaces the range without old_text", () => {
-    const resolved = resolveEdits(sampleLines, [
-        {
-            start_line: 5,
-            end_line: 7,
-            new_text: "function b() {\n\treturn 2;\n}"
-        }
-    ]);
-
-    assert.equal(resolved.length, 1);
-    assert.equal(resolved[0].position, 4);
-    assert.equal(resolved[0].oldLength, 3);
-    assert.deepEqual(resolved[0].range, { start_line: 5, end_line: 7 });
-
-    const { newLines } = applyResolvedEdits(sampleLines, resolved);
-    assert.deepEqual(newLines.slice(4), ["function b() {", "\treturn 2;", "}"]);
-});
-
-test("a line-range edit can delete its range with empty new_text", () => {
-    const resolved = resolveEdits(sampleLines, [
-        { start_line: 4, end_line: 7, new_text: "" }
-    ]);
-
-    const { newLines } = applyResolvedEdits(sampleLines, resolved);
-    assert.deepEqual(newLines, ["function a() {", "  return 1;", "}"]);
-});
-
-test("an out-of-file line range is rejected with the line count", () => {
-    assert.throws(
-        () =>
-            resolveEdits(sampleLines, [
-                { start_line: 6, end_line: 9, new_text: "x" }
-            ]),
-        (error) => {
-            assert.ok(error instanceof EditEngineError);
-            assert.equal(error.data.total_lines, 7);
-            return true;
-        }
-    );
-});
-
-test("an edit must provide old_text or a line range", () => {
-    assert.throws(
-        () => resolveEdits(sampleLines, [{ new_text: "x" }]),
-        EditEngineError
-    );
-});
-
-test("an edit cannot provide both old_text and a line range", () => {
-    assert.throws(
-        () =>
-            resolveEdits(sampleLines, [
-                {
-                    old_text: "function a() {",
-                    start_line: 1,
-                    end_line: 3,
-                    new_text: "x"
-                }
-            ]),
-        /not both/
-    );
-});
-
-test("overlapping range and content edits are rejected", () => {
-    assert.throws(
-        () =>
-            resolveEdits(sampleLines, [
-                {
-                    line_hint: 1,
-                    old_text: "function a() {",
-                    new_text: "function z() {"
-                },
-                { start_line: 1, end_line: 2, new_text: "x" }
-            ]),
-        /overlap/
-    );
-});
-
-/* ------------------------------------------------------------------ */
-/* Runner                                                             */
+/* Runner                                                              */
 /* ------------------------------------------------------------------ */
 
 let failed = 0;
