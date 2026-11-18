@@ -178,7 +178,7 @@ const tools = [
         type: "function",
         name: "read_file",
         description:
-            "Read a UTF-8 text file inside the workspace. The lines are returned numbered in a fixed-width gutter (\"  42 | line text\") together with a sha256 hash that must be passed as expected_hash to edit_file. Optional line ranges limit the response for large files. Files matching the denied-file patterns (credentials, private keys, .env files, .git contents, and similar secrets) cannot be read.",
+            "Read a UTF-8 text file inside the workspace. The lines are returned numbered in a fixed-width gutter (\"  42 | line text\") together with a sha256 hash that must be passed as expected_hash to edit_file. Optional line ranges limit the response for large files. Tabs are shown as the two-character sequence \\t. Files matching the denied-file patterns (credentials, private keys, .env files, .git contents, and similar secrets) cannot be read.",
         strict: true,
         parameters: {
             type: "object",
@@ -208,7 +208,7 @@ const tools = [
         type: "function",
         name: "edit_file",
         description:
-            "Apply one or more exact search/replace edits to an existing UTF-8 text file, atomically. Each edit replaces old_text with new_text; old_text must match the file (after line-ending normalization) at exactly one location. line_hint is the 1-based line number where old_text is expected, taken from read_file's numbered output; it disambiguates multiple matches, and if the file has shifted, the surrounding lines are searched. expected_hash must be the sha256 hash from the most recent read_file or edit_file result for this file; if the file changed since it was read, the edit is rejected. All edits are resolved against the same file snapshot and must not overlap; if any edit cannot be applied, nothing is changed and the error reports the actual numbered lines nearby. The user must approve every edit before changes are made.",
+            "Apply one or more edits to an existing UTF-8 text file, atomically. Each edit either replaces old_text with new_text, where old_text must match the file (after line-ending normalization) at exactly one location, or omits old_text and instead specifies the 1-based start_line and end_line of the line range that new_text replaces. Tabs read from read_file are shown as the two-character sequence \\t: if old_text containing those sequences does not match literally, it is retried with \\t read as real tabs, and a matching fallback interprets \\t in new_text the same way (line-range edits use new_text verbatim, so write real tabs there). line_hint is the 1-based line number where old_text is expected, taken from read_file's numbered output; it disambiguates multiple matches, and if the file has shifted, the surrounding lines are searched. expected_hash must be the sha256 hash from the most recent read_file or edit_file result for this file; if the file changed since it was read, the edit is rejected. All edits are resolved against the same file snapshot and must not overlap; if any edit cannot be applied, nothing is changed and the error reports the actual numbered lines nearby. The user must approve every edit before changes are made.",
         strict: true,
         parameters: {
             type: "object",
@@ -237,17 +237,35 @@ const tools = [
                                     "1-based line number of old_text's first line, as shown by read_file's numbered output."
                             },
                             old_text: {
-                                type: "string",
+                                type: ["string", "null"],
                                 description:
-                                    "Exact text to replace, copied from the numbered read without the ' N | ' gutter. Must match the file at exactly one location; include enough surrounding lines to make it unique. A single trailing newline is ignored."
+                                    "Exact text to replace, copied from the numbered read without the ' N | ' gutter, where tabs appear as \\t. Must match the file at exactly one location; include enough surrounding lines to make it unique. A single trailing newline is ignored. Null when replacing lines by range with start_line/end_line."
                             },
                             new_text: {
                                 type: "string",
                                 description:
-                                    "Replacement text. May be empty to delete the old lines. A single trailing newline is ignored."
+                                    "Replacement text. May be empty to delete the old lines. A single trailing newline is ignored. Interpreted with \\t as tabs when the old_text tab fallback matched; used verbatim for line-range edits."
+                            },
+                            start_line: {
+                                type: ["integer", "null"],
+                                minimum: 1,
+                                description:
+                                    "First line (1-based) of the line range that new_text replaces; used instead of old_text."
+                            },
+                            end_line: {
+                                type: ["integer", "null"],
+                                minimum: 1,
+                                description:
+                                    "Last line (1-based, inclusive) of the line range that new_text replaces; used instead of old_text."
                             }
                         },
-                        required: ["line_hint", "old_text", "new_text"],
+                        required: [
+                            "line_hint",
+                            "old_text",
+                            "new_text",
+                            "start_line",
+                            "end_line"
+                        ],
                         additionalProperties: false
                     }
                 }
@@ -651,9 +669,11 @@ async function requestEditApproval(
  *
  *  1. The expected_hash guard rejects edits based on a stale view of the
  *     file, including changes made outside the agent.
- *  2. Edits are anchored on their old_text content; the model's line_hint is
+ *  2. Content edits are anchored on their old_text; the model's line_hint is
  *     verified first, then searched around, then the whole file, which must
- *     match uniquely.
+ *     match uniquely. Alternatively, an edit names a line range directly.
+ *     "\t" display sequences in old_text are re-read as tabs when the
+ *     verbatim text is not found.
  *  3. All edits are resolved and validated against the same snapshot and
  *     applied atomically: a single bad edit changes nothing.
  *  4. Failures return structured context (actual hashes, matching line
@@ -770,6 +790,14 @@ async function editFile(args) {
     await fs.rename(absoluteFilePath, backupFilePath);
     await fs.writeFile(absoluteFilePath, newContent, "utf8");
 
+    /*
+     * Report edits that matched only after the "\t" display sequences were
+     * read as tabs, so the model knows its text was reinterpreted.
+     */
+    const tabEscapedEdits = resolvedEdits
+        .filter((edit) => edit.usedTabEscape)
+        .map((edit) => edit.editIndex + 1);
+
     return {
         approved: true,
         file_path: args.file_path,
@@ -780,8 +808,14 @@ async function editFile(args) {
         hash: sha256Hex(newContent),
         backup_file_path: `${args.file_path}${config.BACKUP_FILE_SUFFIX}`,
         changed_region: buildChangedRegion(newLines, changedRanges),
+        ...(tabEscapedEdits.length > 0
+            ? { tab_escaped_edits: tabEscapedEdits }
+            : {}),
         message:
-            "Edits applied. Use the returned hash for follow-up edits; re-read only if the file changed outside edit_file."
+            "Edits applied. Use the returned hash for follow-up edits; re-read only if the file changed outside edit_file." +
+            (tabEscapedEdits.length > 0
+                ? ` Edit(s) ${tabEscapedEdits.join(", ")} matched after interpreting \\t sequences as tabs; new_text was interpreted the same way.`
+                : "")
     };
 }
 

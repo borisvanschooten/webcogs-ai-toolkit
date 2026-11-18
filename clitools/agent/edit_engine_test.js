@@ -13,6 +13,7 @@ import {
     applyResolvedEdits,
     buildChangedRegion,
     capDiff,
+    escapeTabsForDisplay,
     formatNumberedLines,
     formatUnifiedDiff,
     joinLines,
@@ -21,7 +22,8 @@ import {
     parseEditLines,
     resolveEdits,
     sha256Hex,
-    splitLines
+    splitLines,
+    unescapeTabsFromDisplay
 } from "./edit_engine.js";
 
 const tests = [];
@@ -394,6 +396,157 @@ test("normalizeHash tolerates prefixes, whitespace, and casing", () => {
     assert.equal(normalizeHash(" SHA256:AbC123\n"), "abc123");
     assert.equal(normalizeHash("AbC123"), "abc123");
     assert.equal(normalizeHash(null), "");
+});
+
+/* ------------------------------------------------------------------ */
+/* Tab display escaping                                                */
+/* ------------------------------------------------------------------ */
+
+test("formatNumberedLines shows tabs as the two characters \\t", () => {
+    assert.equal(
+        formatNumberedLines(["\tconst a = 1;"], 1, 1),
+        "1 | \\tconst a = 1;"
+    );
+    assert.equal(escapeTabsForDisplay("a\tb"), "a\\tb");
+    assert.equal(unescapeTabsFromDisplay("a\\tb"), "a\tb");
+    assert.equal(unescapeTabsFromDisplay("no escapes"), "no escapes");
+});
+
+test("old_text with \\t display sequences falls back to real tabs", () => {
+    const lines = ["\tfunction a() {", "\t\treturn 1;", "\t}"];
+
+    const [resolved] = resolveEdits(lines, [
+        {
+            line_hint: 2,
+            old_text: "\\t\\treturn 1;",
+            new_text: "\\t\\treturn 2;"
+        }
+    ]);
+
+    assert.equal(resolved.position, 1);
+    assert.equal(resolved.usedTabEscape, true);
+    assert.deepEqual(resolved.newLines, ["\t\treturn 2;"]);
+});
+
+test("literal backslash-t text matches verbatim without the fallback", () => {
+    const lines = ["if (ch === '\\t') {"];
+
+    const [resolved] = resolveEdits(lines, [
+        {
+            line_hint: 1,
+            old_text: "if (ch === '\\t') {",
+            new_text: "if (ch === '\\v') {"
+        }
+    ]);
+
+    assert.equal(resolved.position, 0);
+    assert.equal(resolved.usedTabEscape, false);
+    assert.deepEqual(resolved.newLines, ["if (ch === '\\v') {"]);
+});
+
+test("an ambiguous tab fallback reports the matching lines", () => {
+    const lines = [
+        "\treturn 1;",
+        "\treturn 2;",
+        "x",
+        "\treturn 1;",
+        "\treturn 2;"
+    ];
+
+    assert.throws(
+        () =>
+            resolveEdits(lines, [
+                { old_text: "\\treturn 1;\n\\treturn 2;", new_text: "" }
+            ]),
+        (error) => {
+            assert.ok(error instanceof EditEngineError);
+            assert.equal(error.data.matches_found, 2);
+            assert.deepEqual(error.data.matching_lines, [1, 4]);
+            return true;
+        }
+    );
+});
+
+/* ------------------------------------------------------------------ */
+/* Line-range edits                                                    */
+/* ------------------------------------------------------------------ */
+
+test("a line-range edit replaces the range without old_text", () => {
+    const resolved = resolveEdits(sampleLines, [
+        {
+            start_line: 5,
+            end_line: 7,
+            new_text: "function b() {\n\treturn 2;\n}"
+        }
+    ]);
+
+    assert.equal(resolved.length, 1);
+    assert.equal(resolved[0].position, 4);
+    assert.equal(resolved[0].oldLength, 3);
+    assert.deepEqual(resolved[0].range, { start_line: 5, end_line: 7 });
+
+    const { newLines } = applyResolvedEdits(sampleLines, resolved);
+    assert.deepEqual(newLines.slice(4), ["function b() {", "\treturn 2;", "}"]);
+});
+
+test("a line-range edit can delete its range with empty new_text", () => {
+    const resolved = resolveEdits(sampleLines, [
+        { start_line: 4, end_line: 7, new_text: "" }
+    ]);
+
+    const { newLines } = applyResolvedEdits(sampleLines, resolved);
+    assert.deepEqual(newLines, ["function a() {", "  return 1;", "}"]);
+});
+
+test("an out-of-file line range is rejected with the line count", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                { start_line: 6, end_line: 9, new_text: "x" }
+            ]),
+        (error) => {
+            assert.ok(error instanceof EditEngineError);
+            assert.equal(error.data.total_lines, 7);
+            return true;
+        }
+    );
+});
+
+test("an edit must provide old_text or a line range", () => {
+    assert.throws(
+        () => resolveEdits(sampleLines, [{ new_text: "x" }]),
+        EditEngineError
+    );
+});
+
+test("an edit cannot provide both old_text and a line range", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                {
+                    old_text: "function a() {",
+                    start_line: 1,
+                    end_line: 3,
+                    new_text: "x"
+                }
+            ]),
+        /not both/
+    );
+});
+
+test("overlapping range and content edits are rejected", () => {
+    assert.throws(
+        () =>
+            resolveEdits(sampleLines, [
+                {
+                    line_hint: 1,
+                    old_text: "function a() {",
+                    new_text: "function z() {"
+                },
+                { start_line: 1, end_line: 2, new_text: "x" }
+            ]),
+        /overlap/
+    );
 });
 
 /* ------------------------------------------------------------------ */

@@ -24,24 +24,22 @@ function rewriteExportStatements(source) {
 const tools = [
 	{
 		"type": "function",
-		"function": {
-			"name": "save_translations",
-			"description": "Create translation file with json translations.",
-			"parameters": {
-				"type": "object",
-				"properties": {
-					"translations": {
-						"type": "string",
-						"description": "the JSON string, which is an array of translations",
-					},
+		"name": "save_translations",
+		"description": "Create translation file with json translations.",
+		"parameters": {
+			"type": "object",
+			"properties": {
+				"translations": {
+					"type": "string",
+					"description": "the JSON string, which is an array of translations",
 				},
-				"required": [
-					"translations"
-				],
-				"additionalProperties": false
 			},
-			"strict": true
-		}
+			"required": [
+				"translations"
+			],
+			"additionalProperties": false
+		},
+		"strict": true
 	},
 ];
 
@@ -83,7 +81,7 @@ async function llmTranslate(json) {
 	]
 
 	if (options.automatic) {
-		var output = await callLLM.callLLM(client,messages,tools,"aifn_",ai_functions,"gpt-4o-mini",2,null,2000)
+		var output = await callLLM.callLLMResponses(client,messages,tools,"aifn_",ai_functions,"gpt-4o-mini",2,null,2000)
 		return output
 	} else {
 		save_translations({translations: json})

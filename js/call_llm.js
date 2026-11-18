@@ -1,6 +1,6 @@
 // XXX still uses globals: generated_tools, disabled_tools, but also works without them
 // available_functions is an object with the function names as fields
-async function callLLM(client,messages,tools,aifnPrefix,available_functions,modelName="gpt-5.5",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
+async function callLLM(client,messages,tools,aifnPrefix,available_functions,modelName="gpt-6.1-sol",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
 	var outputString = ""
 	while (nrTries >= 0) {
 		nrTries--
@@ -105,7 +105,7 @@ async function callLLM(client,messages,tools,aifnPrefix,available_functions,mode
 
 
 // version that uses the responses API
-async function callLLMResponses(client,conversation,tools,aifnPrefix,available_functions,modelName="gpt-5.5",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
+async function callLLMResponses(client,conversation,tools,aifnPrefix,available_functions,modelName="gpt-6.1-sol",nrTries=20,showToolCallsElem="response",truncateResult=2000,tool_choice="auto") {
 	var outputString = ""
 	while (nrTries >= 0) {
 		nrTries--
@@ -119,7 +119,7 @@ async function callLLMResponses(client,conversation,tools,aifnPrefix,available_f
 				(tool) => !Object.prototype.hasOwnProperty.call(disabled_tools, tool.name)
 			);
 		}
-		console.log(enabledtools)
+		//console.log(enabledtools)
 		//console.log(conversation)
 		const response = await client.responses.create({
 			model: modelName,
@@ -127,8 +127,9 @@ async function callLLMResponses(client,conversation,tools,aifnPrefix,available_f
 			input: conversation,
 			/* disabled for now*/  /*tool_choice,*/
 		});
-		console.log(response)
+		//console.log(response)
 		conversation.push(...response.output)
+		var nrFunctionCalls = 0
 		for (const out of response.output) {
 			if (out.type == "message") {
 				for (const con of out.content) {
@@ -136,10 +137,9 @@ async function callLLMResponses(client,conversation,tools,aifnPrefix,available_f
 						outputString += con.text
 					}
 				}
-				// output message ends turn?
-				return outputString
 			} else if (out.type == "function_call") {
-				tool_call = out
+				nrFunctionCalls++
+				const tool_call = out
 				let fn = tool_call.name;
 				let args = JSON.parse(tool_call.arguments)
 				let unpackedArgs = {};
@@ -197,7 +197,7 @@ async function callLLMResponses(client,conversation,tools,aifnPrefix,available_f
 					conversation.push({
 						type: "function_call_output",
 						call_id: tool_call.call_id,
-						output: JSON.stringify(result)
+						output: result
 					});
 					/*messages.push({
 						"content": result,
@@ -217,6 +217,10 @@ async function callLLMResponses(client,conversation,tools,aifnPrefix,available_f
 					})*/
 				}
 			}
+		}
+		if (nrFunctionCalls == 0) {
+			// no more function calls, message output ends turn
+			return outputString;
 		}
 	}
 	return outputString;

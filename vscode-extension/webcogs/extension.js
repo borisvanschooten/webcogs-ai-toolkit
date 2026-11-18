@@ -370,7 +370,7 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.5")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-6.1-sol")
 		parser.parseFile("assess").then( (update) => {
 			for (var i=0; i<update.assess.length; i++) {
 				vscode.window.registerTreeDataProvider('webcogsSimpleListView', new CommentListProvider(update.assess[i]))
@@ -384,7 +384,7 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.5")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-6.1-sol")
 		parser.parseFile("none").then( (update) => {
 			for (var i=0; i<update.prompts.length; i++) {
 				vscode.window.showInformationMessage("Prompt",{detail:`${update.prompts[i]}`,modal: true});
@@ -398,7 +398,7 @@ function activate(context) {
 		const document = editor.document
 		const fileName = document.fileName
 		var basePath = path.dirname(fileName)
-		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-5.5")
+		var parser = new UpdateCogsInPlace(openaiclient, document.getText(), basePath, [funcName], "openai", "gpt-6.1-sol")
 		parser.parseFile("build").then( (update) => {
 			// show prompts (debug feature)
 			//for (var i=0; i<update.prompts.length; i++) {

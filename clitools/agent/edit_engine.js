@@ -107,14 +107,35 @@ export function lineNumberWidth(totalLines) {
 }
 
 /*
+ * Whitespace that the model must reproduce exactly is displayed escaped:
+ * every tab becomes the two-character sequence "\t", so indentation can be
+ * counted and copied from the display. All model-facing output (read_file
+ * content, nearby-line error windows, changed-region previews) flows through
+ * formatNumberedLines, so the convention is applied in one place.
+ */
+export function escapeTabsForDisplay(text) {
+    return text.replace(/\t/g, "\\t");
+}
+
+/*
+ * The matching counterpart: read the "\t" display sequences in model-supplied
+ * text back as real tabs. Used only as a fallback when the verbatim text
+ * does not match the file (see resolveEdit).
+ */
+export function unescapeTabsFromDisplay(text) {
+    return text.includes("\\t") ? text.split("\\t").join("\t") : text;
+}
+
+/*
  * Numbered gutter used everywhere lines are shown to the model: a fixed-width
- * right-aligned number, padded with spaces, then " | ", then the line.
+ * right-aligned number, padded with spaces, then " | ", then the line with
+ * tabs escaped by escapeTabsForDisplay.
  */
 export function formatNumberedLines(lines, firstLineNumber, width) {
     return lines
         .map(
             (line, index) =>
-                `${String(firstLineNumber + index).padStart(width)} | ${line}`
+                `${String(firstLineNumber + index).padStart(width)} | ${escapeTabsForDisplay(line)}`
         )
         .join("\n");
 }
@@ -225,59 +246,26 @@ function missingAnchorError(label, editIndex, hint, lines, oldLines) {
         );
     } else {
         message +=
-            " Read the file to get numbered lines, then retry with an exact old_text and a line_hint.";
+            " Read the file to get numbered lines, then retry with an exact old_text and a line_hint, or replace the lines by range with start_line and end_line.";
     }
 
     return new EditEngineError(message, data);
 }
 
-function resolveEdit(lines, edit, index, totalEdits) {
-    const label = `Edit ${index + 1} of ${totalEdits}`;
-
-    if (edit === null || typeof edit !== "object") {
-        throw new EditEngineError(
-            `${label}: each edit must be an object with old_text and new_text.`,
-            { edit_index: index }
-        );
-    }
-
-    if (typeof edit.old_text !== "string" || typeof edit.new_text !== "string") {
-        throw new EditEngineError(
-            `${label}: old_text and new_text are required strings.`,
-            { edit_index: index }
-        );
-    }
-
-    const oldLines = parseEditLines(edit.old_text);
-    const newLines = parseEditLines(edit.new_text);
-
-    if (oldLines.length === 0) {
-        throw new EditEngineError(
-            `${label}: old_text is empty. Use write_file to create a file or replace its whole contents.`,
-            { edit_index: index }
-        );
-    }
-
-    if (edit.old_text === edit.new_text) {
-        throw new EditEngineError(
-            `${label}: old_text and new_text are identical, so nothing would change.`,
-            { edit_index: index }
-        );
-    }
-
-    const hint = Number.isInteger(edit.line_hint) ? edit.line_hint : null;
+/*
+ * Anchor resolution for a content edit, most specific first: exact match at
+ * the hint, then a match within HINT_SEARCH_OFFSET lines of the hint (the
+ * file may have shifted since it was read), then the whole file, which must
+ * match uniquely. An exact hit at the hint disambiguates even if the same
+ * text occurs elsewhere. Throws an EditEngineError when the anchor is
+ * missing or ambiguous.
+ */
+function resolveContentAnchor(lines, oldLines, hint, index, label) {
     const globalMatches = findAllMatches(lines, oldLines);
 
     let position = -1;
     let anchoredAtHint = false;
 
-    /*
-     * Anchor resolution, most specific first: exact match at the hint, then a
-     * match within HINT_SEARCH_OFFSET lines of the hint (the file may have
-     * shifted since it was read), then the whole file, which must match
-     * uniquely. An exact hit at the hint disambiguates even if the same text
-     * occurs elsewhere.
-     */
     if (hint !== null && matchesAt(lines, oldLines, hint - 1)) {
         position = hint - 1;
         anchoredAtHint = true;
@@ -305,15 +293,166 @@ function resolveEdit(lines, edit, index, totalEdits) {
         }
     }
 
+    return { position, anchoredAtHint };
+}
+
+function resolveContentEdit(lines, edit, index, label) {
+    const oldLines = parseEditLines(edit.old_text);
+
+    if (oldLines.length === 0) {
+        throw new EditEngineError(
+            `${label}: old_text is empty. Use write_file to create a file or replace its whole contents.`,
+            { edit_index: index }
+        );
+    }
+
+    if (edit.old_text === edit.new_text) {
+        throw new EditEngineError(
+            `${label}: old_text and new_text are identical, so nothing would change.`,
+            { edit_index: index }
+        );
+    }
+
+    const hint = Number.isInteger(edit.line_hint) ? edit.line_hint : null;
+    let newLines = parseEditLines(edit.new_text);
+    let usedTabEscape = false;
+    let anchor;
+
+    try {
+        anchor = resolveContentAnchor(lines, oldLines, hint, index, label);
+    } catch (exactError) {
+        /*
+         * Fallback for the "\t" display convention: text copied from
+         * read_file contains the two-character sequence "\t" for every real
+         * tab. When the verbatim text is not found at all, retry with those
+         * sequences read as tabs. An ambiguous verbatim match does not
+         * trigger the fallback: the text was found, so the model must add
+         * context instead. When the fallback matches, new_text is
+         * interpreted the same way.
+         */
+        const unescapedOldText = unescapeTabsFromDisplay(edit.old_text);
+        const isMissingAnchor =
+            exactError instanceof EditEngineError &&
+            exactError.data &&
+            exactError.data.matches_found === 0;
+
+        if (unescapedOldText === edit.old_text || !isMissingAnchor) {
+            throw exactError;
+        }
+
+        try {
+            anchor = resolveContentAnchor(
+                lines,
+                parseEditLines(unescapedOldText),
+                hint,
+                index,
+                label
+            );
+        } catch (fallbackError) {
+            /* A fallback ambiguity found the text and is more informative. */
+            if (
+                fallbackError instanceof EditEngineError &&
+                fallbackError.data &&
+                fallbackError.data.matches_found > 0
+            ) {
+                throw fallbackError;
+            }
+
+            throw exactError;
+        }
+
+        usedTabEscape = true;
+        newLines = parseEditLines(unescapeTabsFromDisplay(edit.new_text));
+    }
+
     return {
         editIndex: index,
-        position,
+        position: anchor.position,
         oldLength: oldLines.length,
         newLines,
         lineHint: hint,
-        anchoredAtHint,
-        offset: anchoredAtHint || hint === null ? 0 : position + 1 - hint
+        anchoredAtHint: anchor.anchoredAtHint,
+        offset:
+            anchor.anchoredAtHint || hint === null
+                ? 0
+                : anchor.position + 1 - hint,
+        usedTabEscape
     };
+}
+
+/*
+ * A range edit replaces the inclusive 1-based line range with new_text, so
+ * the old text never has to be reproduced. The expected_hash guard keeps the
+ * line numbers trustworthy. new_text is used verbatim: real tabs, not the
+ * "\t" display sequence.
+ */
+function resolveRangeEdit(lines, edit, index, label) {
+    const startLine = edit.start_line;
+    const endLine = edit.end_line;
+
+    if (!Number.isInteger(startLine) || !Number.isInteger(endLine)) {
+        throw new EditEngineError(
+            `${label}: provide either old_text, or both start_line and end_line.`,
+            { edit_index: index }
+        );
+    }
+
+    if (startLine < 1 || endLine < startLine || endLine > lines.length) {
+        throw new EditEngineError(
+            `${label}: the line range ${startLine}-${endLine} is invalid for a file with ${lines.length} line(s).`,
+            {
+                edit_index: index,
+                start_line: startLine,
+                end_line: endLine,
+                total_lines: lines.length
+            }
+        );
+    }
+
+    return {
+        editIndex: index,
+        position: startLine - 1,
+        oldLength: endLine - startLine + 1,
+        newLines: parseEditLines(edit.new_text),
+        lineHint: null,
+        anchoredAtHint: false,
+        offset: 0,
+        usedTabEscape: false,
+        range: { start_line: startLine, end_line: endLine }
+    };
+}
+
+function resolveEdit(lines, edit, index, totalEdits) {
+    const label = `Edit ${index + 1} of ${totalEdits}`;
+
+    if (edit === null || typeof edit !== "object") {
+        throw new EditEngineError(
+            `${label}: each edit must provide old_text, or start_line and end_line, plus new_text.`,
+            { edit_index: index }
+        );
+    }
+
+    if (typeof edit.new_text !== "string") {
+        throw new EditEngineError(`${label}: new_text is a required string.`, {
+            edit_index: index
+        });
+    }
+
+    if (typeof edit.old_text === "string") {
+        if (
+            (edit.start_line !== undefined && edit.start_line !== null) ||
+            (edit.end_line !== undefined && edit.end_line !== null)
+        ) {
+            throw new EditEngineError(
+                `${label}: provide either old_text or start_line/end_line, not both.`,
+                { edit_index: index }
+            );
+        }
+
+        return resolveContentEdit(lines, edit, index, label);
+    }
+
+    return resolveRangeEdit(lines, edit, index, label);
 }
 
 /*

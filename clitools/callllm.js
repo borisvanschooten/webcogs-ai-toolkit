@@ -26,7 +26,7 @@ if (options.prompt) {
 	prompt = options.prompt+" "+prompt
 }
 
-var model = "gpt-5.5"
+var model = "gpt-6.1-sol"
 if (options.model) model = options.model
 
 
@@ -39,7 +39,7 @@ var messages = [
 
 var client = new OpenAI.OpenAI({apiKey: process.env.OPENAI_API_KEY})
 
-callLLM.callLLM(client,messages,[],"aifn_",[],model,2,null,2000)
+callLLM.callLLMResponses(client,messages,[],"aifn_",[],model,2,null,2000)
 .then((output) => {
 	console.log(output)
 })

@@ -67,46 +67,42 @@ class UpdateCogsInPlace {
 	tools = [
 		{
 			"type": "function",
-			"function": {
-				"name": "create_function",
-				"description": "Create a function. It should be specified in full, do not omit any code. Create just the function itself.",
-				"parameters": {
-					"type": "object",
-					"properties": {
-						"source_code": {
-							"type": "string",
-							"description": "The function code, including function name and parameters",
-						},
+			"name": "create_function",
+			"description": "Create a function. It should be specified in full, do not omit any code. Create just the function itself.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"source_code": {
+						"type": "string",
+						"description": "The function code, including function name and parameters",
 					},
-					"required": [
-						"source_code"
-					],
-					"additionalProperties": false
 				},
-				"strict": true
-			}
+				"required": [
+					"source_code"
+				],
+				"additionalProperties": false
+			},
+			"strict": true
 		},
 		{
 			"type": "function",
-			"function": {
-				"name": "report_assessment",
-				"description": "Reports an assessment to the user, described as an array of points.",
-				"parameters": {
-					"type": "object",
-					"properties": {
-						"assessment_items": {
-							"type": "array",
-							"items": { "type": "string" },
-							"description": "Array of assessment strings, describing your assessment points",
-						},
+			"name": "report_assessment",
+			"description": "Reports an assessment to the user, described as an array of points.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"assessment_items": {
+						"type": "array",
+						"items": { "type": "string" },
+						"description": "Array of assessment strings, describing your assessment points",
 					},
-					"required": [
-						"assessment_items"
-					],
-					"additionalProperties": false
 				},
-				"strict": true
-			}
+				"required": [
+					"assessment_items"
+				],
+				"additionalProperties": false
+			},
+			"strict": true
 		},
 	];
 
@@ -245,7 +241,7 @@ class UpdateCogsInPlace {
 		// forcing tool calls results in calling the tool 3x with the same input (o3-mini)
 		this.submittedPrompts.push(`System prompt:\n${this.system_prompt}\n\nFunction prompt:\n${this.func_prompt}`)
 		if (action != "none") {
-			var output = await callLLM.callLLM(this.client,messages,this.tools,"aifn_",this,this.model,2,null,2000,"auto")
+			var output = await callLLM.callLLMResponses(this.client,messages,this.tools,"aifn_",this,this.model,2,null,2000,"auto")
 			console.log("AI chat output:")
 			console.log(output)
 		}
