@@ -13,6 +13,7 @@
     ".": "./js/index.js"
   },
   "dependencies": {
+    "@inquirer/prompts": "^8.7.5",
     "browserify": "^17.0.1",
     "colors": "^1.4.0",
     "command-line-args": "^6.0.1",

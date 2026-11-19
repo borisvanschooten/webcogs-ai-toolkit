@@ -1,11 +1,22 @@
 #!/usr/bin/env node
+/*
+ * winpty_console.js must stay the first import: on Windows it may relaunch
+ * the whole process under winpty before anything else runs.
+ *
+ * force_color.js must be imported before anything that styles terminal
+ * output (dotenv has no styling, but keep it second so .env values still
+ * load afterwards).
+ */
+import "./winpty_console.js";
+import "./force_color.js";
 import "dotenv/config";
 import OpenAI from "openai";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
-import readline from "node:readline/promises";
+import { confirm, input } from "@inquirer/prompts";
+import { ExitPromptError } from "@inquirer/core";
 import process from "node:process";
 
 import { marked } from "marked";
@@ -143,10 +154,6 @@ function parseConfiguredDeniedFilePatterns(rawValue,modifier) {
 
 
 
-const terminal = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
 
 const tools = [
     {
@@ -507,17 +514,41 @@ async function readFile(args) {
 }
 
 /*
+ * Yes/no confirmation used for the approval prompts. Ctrl+C counts as a
+ * denial instead of crashing the agent.
+ */
+async function requestConfirmation(message) {
+    try {
+        return await confirm({ message, default: false });
+    } catch (error) {
+        if (error instanceof ExitPromptError) {
+            return false;
+        }
+
+        throw error;
+    }
+}
+
+/*
  * Ask why the user denied a request. An empty answer means no reason was
- * given, which is reported as null.
+ * given, which is reported as null. Ctrl+C also counts as no reason.
  */
 async function requestDenialReason() {
-    const reason = await terminal.question(
-        "Reason for denying (leave empty for no reason): "
-    );
+    try {
+        const reason = await input({
+            message: "Reason for denying (leave empty for no reason):"
+        });
 
-    const trimmedReason = reason.trim();
+        const trimmedReason = reason.trim();
 
-    return trimmedReason === "" ? null : trimmedReason;
+        return trimmedReason === "" ? null : trimmedReason;
+    } catch (error) {
+        if (error instanceof ExitPromptError) {
+            return null;
+        }
+
+        throw error;
+    }
 }
 
 async function requestWriteApproval(filePath, content, previousContent) {
@@ -554,10 +585,9 @@ async function requestWriteApproval(filePath, content, previousContent) {
 
     console.log("------------------------------------------------------------");
 
-    const answer = await terminal.question("Approve this file write? [y/N] ");
-    const normalizedAnswer = answer.trim().toLowerCase();
+    const approved = await requestConfirmation("Approve this file write?");
 
-    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+    if (approved) {
         return { approved: true, denialReason: null };
     }
 
@@ -666,10 +696,9 @@ async function requestEditApproval(
     console.log(diffText);
     console.log("------------------------------------------------------------");
 
-    const answer = await terminal.question("Approve this edit? [y/N] ");
-    const normalizedAnswer = answer.trim().toLowerCase();
+    const approved = await requestConfirmation("Approve this edit?");
 
-    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+    if (approved) {
         return { approved: true, denialReason: null };
     }
 
@@ -833,12 +862,9 @@ async function requestDeleteApproval(filePath, sizeBytes) {
     console.log(`Size: ${sizeBytes} bytes`);
     console.log("------------------------------------------------------------");
 
-    const answer = await terminal.question(
-        "Approve this file deletion? [y/N] "
-    );
-    const normalizedAnswer = answer.trim().toLowerCase();
+    const approved = await requestConfirmation("Approve this file deletion?");
 
-    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+    if (approved) {
         return { approved: true, denialReason: null };
     }
 
@@ -899,10 +925,9 @@ async function requestCommandApproval(command) {
     console.log(command);
     console.log("------------------------------------------------------------");
 
-    const answer = await terminal.question("Approve this command? [y/N] ");
-    const normalizedAnswer = answer.trim().toLowerCase();
+    const approved = await requestConfirmation("Approve this command?");
 
-    if (normalizedAnswer === "y" || normalizedAnswer === "yes") {
+    if (approved) {
         return { approved: true, denialReason: null };
     }
 
@@ -928,12 +953,20 @@ async function runCommand(args) {
         ? Math.max(1000, Math.min(600000, args.timeout_ms))
         : config.DEFAULT_COMMAND_TIMEOUT_MS;
 
-    return await new Promise((resolve) => {
-        const child = spawn(args.command, {
-            cwd: config.WORKSPACE_DIRECTORY,
-            shell: true,
-            env: process.env
-        });
+        /*
+         * Do not leak the agent's own FORCE_COLOR default into spawned
+         * commands: children should decide their own color support based on
+         * their streams, and forced colors would pollute the captured text.
+         */
+        const childEnv = { ...process.env };
+        delete childEnv.FORCE_COLOR;
+
+        return await new Promise((resolve) => {
+            const child = spawn(args.command, {
+                cwd: config.WORKSPACE_DIRECTORY,
+                shell: true,
+                env: childEnv
+            });
 
         let stdout = "";
         let stderr = "";
@@ -1499,6 +1532,16 @@ async function main() {
     console.log(`Model: ${config.model}`);
     console.log(`Workspace: ${config.WORKSPACE_DIRECTORY}`);
     console.log(`Log folder: ${config.LOG_DIRECTORY}`);
+    /*
+     * Temporary diagnostic: raw-mode input (arrow keys, in-line editing) is
+     * only possible when node.exe got a real console handle. In a standalone
+     * Git Bash (mintty) window node gets pipes instead, and readline then
+     * silently skips setRawMode. Compare this line with:
+     *   node -p "JSON.stringify({in: process.stdin.isTTY, out: process.stdout.isTTY})"
+     */
+    //console.log(
+    //    `TTY check: stdin=${process.stdin.isTTY} stdout=${process.stdout.isTTY}`
+    //);
 
     if (resumedFrom !== null) {
         console.log(
@@ -1510,6 +1553,7 @@ async function main() {
     console.log("Enter a development request.");
     console.log("Enter /reset to start a new conversation.");
     console.log("Enter /exit to stop the agent.");
+    console.log("Press Ctrl+C at the prompt to stop the agent.");
     console.log(
         "Start with --resume <conversation-log.json> to continue a logged conversation."
     );
@@ -1524,7 +1568,18 @@ async function main() {
     let conversationFilePath = null;
 
     while (true) {
-        const userMessage = await terminal.question("\nYou> ");
+        let userMessage;
+
+        try {
+            userMessage = await input({ message: "You>" });
+        } catch (error) {
+            if (error instanceof ExitPromptError) {
+                break;
+            }
+
+            throw error;
+        }
+
         const trimmedMessage = userMessage.trim();
 
         if (trimmedMessage === "") {
@@ -1638,12 +1693,15 @@ async function main() {
         }
     }
 
-    terminal.close();
     console.log("Agent stopped.");
 }
 
 main().catch((error) => {
+    if (error instanceof ExitPromptError) {
+        console.log("\nAgent stopped.");
+        return;
+    }
+
     console.error(error);
-    terminal.close();
     process.exitCode = 1;
 });

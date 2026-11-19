@@ -40,6 +40,14 @@ The toolkit comes with a pre-compiled browser-compatible version of the OpenAI J
 
 To regenerate the browser bundle, first install node.js and npm.  Then install browserify and openai via npm install (see package.json).  Once installed, run "bundle-openai.sh" to regenerate the file.
 
+## The CLI agent
+
+after installation (npm run localinstall) the *cogsagent* command is available. Start it in your project root directory. It will look for a config file *webcogs/agent_config.json*, and the env variable OPENROUTER_API_KEY set.  Note that this agent is based on Openrouter instead of OpenAI.  The other tools will also be migrated to Openrouter over time. For an example agent_config.json you can just copy/paste, see this package's webcogs folder.
+
+The agent logs all conversations to *webcogs/agent_logs/* by default, both as a md and as a json files.  the json files can be used to resume a previous conversation using the *--resume <json_file>* option.
+
+Cogsagent can read directories and read/write files in the workspace, and execute shell commands (change the system prompt in *agent_config.json* if you want something other than bash). It asks for permission on all file writes and shell commands. 
+
 ## Webcogs app building toolkit: using the LLM as a compiler
 
 I find AI generated code is often accurate enough to use the AI like a *regular (powerful but slow and not fully reliable) compiler* that compiles specifications into code.  However, this only works for small coding tasks (e.g. single functions and classes), and if the prompt is small and clear enough, and written in sufficiently technical language.  The current generation of AI coding tools and agents are really not good enough to build or maintain larger software bases, so there is still the need for a human architect.  So, in order to make this *LLM-as-compiler* concept work for real-life problems, software has to be organized in a certain way.  A main goal of software engineering is to make complex software manageable for humans. In the age of AI, I think there should also be something like *AI-oriented software engineering*.  
